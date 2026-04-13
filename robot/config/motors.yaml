@@ -1,0 +1,66 @@
+port:
+  windows: "COM6"
+  linux: "/dev/ttyUSB0"
+
+baudrate: 1000000
+
+motors:
+  - id: 1
+    name: "joint1"
+    model: "XL430-W250"
+    mode: "position"
+    home: 2048
+    limit:
+      min: 1024 # -90°
+      max: 3072 #  90°
+    reverse: false
+
+  - id: 2
+    name: "joint2"
+    model: "XL430-W250"
+    mode: "position"
+    home: 2048
+    limit:
+      min: 2048 #   0°
+      max: 3072 #  90°
+    reverse: false
+
+  - id: 3
+    name: "joint3"
+    model: "XL430-W250"
+    mode: "position"
+    home: 2048
+    limit:
+      min: 1024 # -90°
+      max: 2048 #   0°
+    reverse: false
+
+  - id: 4
+    name: "joint4"
+    model: "XL330-M288"
+    mode: "position"
+    home: 2048
+    limit:
+      min: 1024 # -90°
+      max: 3072 #  90°
+    reverse: false
+
+  - id: 5
+    name: "joint5"
+    model: "XL330-M288"
+    mode: "position"
+    home: 2048
+    limit:
+      min: 0 # -180°
+      max: 4095 #  180°
+    reverse: false
+
+  - id: 6
+    name: "gripper"
+    model: "XL330-M288"
+    mode: "position"
+    home: 2048
+    limit:
+      min: 0 # -180°
+      max: 4095 #  180°
+    reverse: false

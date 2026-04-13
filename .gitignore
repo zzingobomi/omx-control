@@ -1,0 +1,42 @@
+# ─── Python ──────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+*.egg-info/
+dist/
+build/
+.uv/
+uv.lock
+
+# ─── Zenoh ───────────────────────────────────────────────────
+# zenoh 세션 임시 파일
+*.zenoh/
+
+# ─── Frontend ────────────────────────────────────────────────
+node_modules/
+frontend/dist/
+frontend/.pnpm-store/
+
+# ─── OS ──────────────────────────────────────────────────────
+# Windows
+Thumbs.db
+desktop.ini
+
+# macOS
+.DS_Store
+.AppleDouble
+
+# Linux
+*~
+
+# ─── IDE ─────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ─── Env ─────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local

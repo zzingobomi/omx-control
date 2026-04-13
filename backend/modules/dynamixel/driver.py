@@ -1,0 +1,210 @@
+import logging
+import threading
+from dynamixel_sdk import (
+    PortHandler,
+    PacketHandler,
+    GroupSyncWrite,
+    GroupSyncRead,
+    COMM_SUCCESS,
+    DXL_LOBYTE,
+    DXL_HIBYTE,
+    DXL_LOWORD,
+    DXL_HIWORD,
+)
+
+from modules.dynamixel.motor_config import MotorConfig
+
+logger = logging.getLogger(__name__)
+
+# ─── Control Table (XL430 / XL330 공통) ───────────────────────
+ADDR_OPERATING_MODE = 11
+ADDR_TORQUE_ENABLE = 64
+ADDR_GOAL_POSITION = 116
+ADDR_PRESENT_POSITION = 132
+ADDR_PRESENT_VELOCITY = 128
+ADDR_PRESENT_LOAD = 126
+ADDR_PROFILE_VELOCITY = 112
+ADDR_PROFILE_ACCELERATION = 108
+ADDR_MIN_POSITION_LIMIT = 52
+ADDR_MAX_POSITION_LIMIT = 48
+
+LEN_GOAL_POSITION = 4
+LEN_PRESENT_POSITION = 4
+LEN_PRESENT_VELOCITY = 4
+LEN_PRESENT_LOAD = 2
+
+OPERATING_MODE_POSITION = 3
+PROTOCOL_VERSION = 2.0
+BAUDRATE = 1_000_000
+
+# TODO: IO Thread + Queue 구조로 변경 검토하기
+
+
+class DynamixelDriver:
+    def __init__(self, port: str, motors: list[MotorConfig]):
+        self.port = port
+        self.motors = {m.id: m for m in motors}
+        self.motor_ids = [m.id for m in motors]
+
+        self.port_handler = PortHandler(port)
+        self.packet_handler = PacketHandler(PROTOCOL_VERSION)
+
+        self._sync_write_goal: GroupSyncWrite | None = None
+        self._sync_read_present: GroupSyncRead | None = None
+        self._lock = threading.Lock()
+
+    # ─── 연결 ────────────────────────────────────────────────
+
+    def connect(self) -> bool:
+        if not self.port_handler.openPort():
+            logger.error(f"포트를 열 수 없습니다: {self.port}")
+            return False
+
+        if not self.port_handler.setBaudRate(BAUDRATE):
+            logger.error(f"Baudrate 설정 실패: {BAUDRATE}")
+            return False
+
+        self._sync_write_goal = GroupSyncWrite(
+            self.port_handler, self.packet_handler,
+            ADDR_GOAL_POSITION, LEN_GOAL_POSITION
+        )
+        self._sync_read_present = GroupSyncRead(
+            self.port_handler, self.packet_handler,
+            ADDR_PRESENT_POSITION, LEN_PRESENT_POSITION
+        )
+        for mid in self.motor_ids:
+            self._sync_read_present.addParam(mid)
+
+        logger.info(f"Dynamixel 연결 성공: {self.port}")
+        return True
+
+    def disconnect(self) -> None:
+        self.torque_disable_all()
+        self.port_handler.closePort()
+        logger.info("Dynamixel 연결 종료")
+
+    # ─── 토크 제어 ────────────────────────────────────────────
+
+    def torque_enable(self, motor_id: int) -> None:
+        self._write1(motor_id, ADDR_TORQUE_ENABLE, 1)
+
+    def torque_disable(self, motor_id: int) -> None:
+        self._write1(motor_id, ADDR_TORQUE_ENABLE, 0)
+
+    def torque_enable_all(self) -> None:
+        for mid in self.motor_ids:
+            self.torque_enable(mid)
+
+    def torque_disable_all(self) -> None:
+        for mid in self.motor_ids:
+            self.torque_disable(mid)
+
+    # ─── 위치 제어 ────────────────────────────────────────────
+
+    def set_goal_position(self, motor_id: int, position: int) -> None:
+        cfg = self.motors[motor_id]
+        pos = self._apply_limits(position, cfg)
+        self._write4(motor_id, ADDR_GOAL_POSITION, pos)
+
+    def set_goal_positions_sync(self, positions: dict[int, int]) -> None:
+        assert self._sync_write_goal is not None
+        with self._lock:
+            for mid, pos in positions.items():
+                cfg = self.motors[mid]
+                pos = self._apply_limits(pos, cfg)
+                param = [
+                    DXL_LOBYTE(DXL_LOWORD(pos)),
+                    DXL_HIBYTE(DXL_LOWORD(pos)),
+                    DXL_LOBYTE(DXL_HIWORD(pos)),
+                    DXL_HIBYTE(DXL_HIWORD(pos)),
+                ]
+                self._sync_write_goal.addParam(mid, param)
+            result = self._sync_write_goal.txPacket()
+            self._sync_write_goal.clearParam()
+        if result != COMM_SUCCESS:
+            logger.warning(
+                f"SyncWrite 실패: {self.packet_handler.getTxRxResult(result)}")
+
+    def get_present_positions(self) -> dict[int, int]:
+        assert self._sync_read_present is not None
+        with self._lock:
+            result = self._sync_read_present.txRxPacket()
+        if result != COMM_SUCCESS:
+            logger.warning(
+                f"SyncRead 실패: {self.packet_handler.getTxRxResult(result)}")
+            return {}
+        positions = {}
+        for mid in self.motor_ids:
+            if self._sync_read_present.isAvailable(mid, ADDR_PRESENT_POSITION, LEN_PRESENT_POSITION):
+                positions[mid] = self._sync_read_present.getData(
+                    mid, ADDR_PRESENT_POSITION, LEN_PRESENT_POSITION
+                )
+        return positions
+
+    def get_present_velocity(self, motor_id: int) -> int:
+        with self._lock:
+            val, result, _ = self.packet_handler.read4ByteTxRx(
+                self.port_handler, motor_id, ADDR_PRESENT_VELOCITY
+            )
+        return val if result == COMM_SUCCESS else 0
+
+    def get_present_load(self, motor_id: int) -> int:
+        with self._lock:
+            val, result, _ = self.packet_handler.read2ByteTxRx(
+                self.port_handler, motor_id, ADDR_PRESENT_LOAD
+            )
+        return val if result == COMM_SUCCESS else 0
+
+    # ─── 프로파일 설정 ────────────────────────────────────────
+
+    def set_profile_velocity(self, motor_id: int, velocity: int) -> None:
+        self.torque_disable(motor_id)
+        self._write4(motor_id, ADDR_PROFILE_VELOCITY, velocity)
+        self.torque_enable(motor_id)
+
+    def set_profile_acceleration(self, motor_id: int, acceleration: int) -> None:
+        self.torque_disable(motor_id)
+        self._write4(motor_id, ADDR_PROFILE_ACCELERATION, acceleration)
+        self.torque_enable(motor_id)
+
+    # ─── 재시작 ──────────────────────────────────────────────
+
+    def reboot(self, motor_id: int) -> None:
+        with self._lock:
+            self.packet_handler.reboot(self.port_handler, motor_id)
+        logger.info(f"모터 {motor_id} 재시작")
+
+    # ─── Util ────────────────────────────────────────────────
+
+    @staticmethod
+    def raw_to_degree(raw: int) -> float:
+        return round(((raw - 2048) / 4095.0) * 360.0, 2)
+
+    @staticmethod
+    def degree_to_raw(degree: float) -> int:
+        return int((degree / 360.0) * 4095 + 2048)
+
+    def _apply_limits(self, pos: int, cfg: MotorConfig) -> int:
+        pos = max(cfg.limit_min, min(cfg.limit_max, pos))
+        if cfg.reverse:
+            center = (cfg.limit_min + cfg.limit_max) // 2
+            pos = center - (pos - center)
+        return pos
+
+    def _write1(self, motor_id: int, addr: int, value: int) -> None:
+        with self._lock:
+            result, error = self.packet_handler.write1ByteTxRx(
+                self.port_handler, motor_id, addr, value
+            )
+        if result != COMM_SUCCESS:
+            logger.warning(
+                f"write1 실패 id={motor_id}: {self.packet_handler.getTxRxResult(result)}")
+
+    def _write4(self, motor_id: int, addr: int, value: int) -> None:
+        with self._lock:
+            result, error = self.packet_handler.write4ByteTxRx(
+                self.port_handler, motor_id, addr, value
+            )
+        if result != COMM_SUCCESS:
+            logger.warning(
+                f"write4 실패 id={motor_id}: {self.packet_handler.getTxRxResult(result)}")
