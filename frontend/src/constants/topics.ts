@@ -19,6 +19,13 @@ export const ServiceKey = {
   MOTOR_REBOOT: "omx/motor/srv/reboot",
   MOTOR_GET_CONFIG: "omx/motor/srv/get_config",
 
+  // Calibration
+  CALIB_CAPTURE: "omx/calib/srv/capture",
+  CALIB_INTRINSIC_START: "omx/calib/srv/intrinsic/start",
+  CALIB_INTRINSIC_SAVE: "omx/calib/srv/intrinsic/save",
+  CALIB_HANDEYE_START: "omx/calib/srv/handeye/start",
+  CALIB_HANDEYE_SAVE: "omx/calib/srv/handeye/save",
+
   // System
   SYSTEM_NODE_STATUS: "omx/system/srv/node_status",
 } as const;

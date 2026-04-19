@@ -112,41 +112,41 @@ def main():
             pub_state.put(json.dumps({"timestamp": t, "joints": joints}))
 
             # ─── 카메라 프레임 (20Hz, 실제는 30fps지만 mock은 20으로) ──
-            session.put(Topic.CAMERA_STREAM_RAW, make_fake_frame(t))
+            # session.put(Topic.CAMERA_STREAM_RAW, make_fake_frame(t))
 
             # ─── 카메라 상태 (최초 한 번) ────────────────────
-            if not camera_status_sent:
-                pub_camera_status.put(json.dumps({
-                    "timestamp": t,
-                    "connected": True,
-                    "width":     640,
-                    "height":    480,
-                    "fps":       30,
-                }))
-                camera_status_sent = True
+            # if not camera_status_sent:
+            #     pub_camera_status.put(json.dumps({
+            #         "timestamp": t,
+            #         "connected": True,
+            #         "width":     640,
+            #         "height":    480,
+            #         "fps":       30,
+            #     }))
+            #     camera_status_sent = True
 
             # ─── Heartbeat (1Hz) ─────────────────────────────
-            if t - last_heartbeat >= 1.0:
-                for node in MOCK_NODES:
-                    pub_heartbeat.put(json.dumps({
-                        "node":      node,
-                        "status":    "ok",
-                        "timestamp": t,
-                    }))
-                last_heartbeat = t
+            # if t - last_heartbeat >= 1.0:
+            #     for node in MOCK_NODES:
+            #         pub_heartbeat.put(json.dumps({
+            #             "node":      node,
+            #             "status":    "ok",
+            #             "timestamp": t,
+            #         }))
+            #     last_heartbeat = t
 
             # ─── 로그 (3초마다) ──────────────────────────────
-            if t - last_log >= 3.0:
-                level = LOG_LEVELS[log_index % len(LOG_LEVELS)]
-                node = MOCK_NODES[log_index % len(MOCK_NODES)]
-                pub_log.put(json.dumps({
-                    "timestamp": t,
-                    "node":      node,
-                    "level":     level,
-                    "message":   f"[mock] 테스트 로그 #{log_index} ({level})",
-                }))
-                log_index += 1
-                last_log = t
+            # if t - last_log >= 3.0:
+            #     level = LOG_LEVELS[log_index % len(LOG_LEVELS)]
+            #     node = MOCK_NODES[log_index % len(MOCK_NODES)]
+            #     pub_log.put(json.dumps({
+            #         "timestamp": t,
+            #         "node":      node,
+            #         "level":     level,
+            #         "message":   f"[mock] 테스트 로그 #{log_index} ({level})",
+            #     }))
+            #     log_index += 1
+            #     last_log = t
 
             time.sleep(interval)
 

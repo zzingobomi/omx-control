@@ -14,7 +14,7 @@ export function Dashboard() {
       </div>
       {/* 오른쪽: 카메라 */}
       <div className="flex-1">
-        <CameraFeed />
+        <CameraFeed className="max-h-[720px]" />
       </div>
     </div>
   );

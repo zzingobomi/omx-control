@@ -1,13 +1,23 @@
 const CAMERA_URL = "http://localhost:8000/camera/stream";
 
-export function CameraFeed() {
+interface Props {
+  className?: string;
+  overlay?: React.ReactNode;
+}
+
+export function CameraFeed({ className, overlay }: Props) {
   return (
-    <div className="relative w-full overflow-hidden rounded-lg bg-black">
+    <div
+      className={`relative overflow-hidden rounded-lg bg-black ${
+        className ?? ""
+      }`}
+    >
       <img
         src={CAMERA_URL}
         alt="camera feed"
-        className="w-full max-h-[480px] object-contain"
+        className="w-full h-full object-contain"
       />
+      {overlay && <div className="absolute inset-0">{overlay}</div>}
     </div>
   );
 }

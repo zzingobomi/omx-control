@@ -3,6 +3,7 @@ import { Sidebar } from "@/components/common/Sidebar";
 import { useBridge } from "@/hooks/useBridge";
 import { Dashboard } from "@/pages/Dashboard";
 import { Settings } from "@/pages/Settings";
+import { Calibration } from "@/pages/Calibration";
 
 function AppContent() {
   useBridge();
@@ -14,6 +15,7 @@ function AppContent() {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/calibration" element={<Calibration />} />
         </Routes>
       </main>
     </div>
