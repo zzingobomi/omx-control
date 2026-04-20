@@ -27,12 +27,12 @@ def main():
     ZenohSession.init()
 
     # ─── 노드 초기화 ─────────────────────────────────────────
-    # motor_node = MotorNode()
+    motor_node = MotorNode()
     camera_node = CameraNode()
     calib_node = CalibrationNode(camera=camera_node.camera)
 
     # ─── 노드 시작 (별도 스레드) ──────────────────────────────
-    # nodes = [motor_node, camera_node, calib_node]
+    nodes = [motor_node, camera_node, calib_node]
     nodes = [camera_node, calib_node]
     for node in nodes:
         node.start()
@@ -49,7 +49,7 @@ def main():
         ZenohSession.close()
         sys.exit(0)
 
-    signal.signal(signal.SIGINT,  shutdown)
+    signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGTERM, shutdown)
 
     # ─── FastAPI 브릿지 서버 시작 ──────────────────────────────
