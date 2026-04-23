@@ -17,8 +17,8 @@ class CameraCapture:
             logger.error(f"카메라를 열 수 없습니다: index={self.camera_index}")
             return False
         # 기본 해상도 설정
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
         logger.info(f"카메라 연결 성공: index={self.camera_index}")
         return True
 

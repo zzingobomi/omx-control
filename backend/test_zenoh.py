@@ -21,7 +21,7 @@ MOCK_NODES = ["motor_node", "camera_node"]
 # ─── 가짜 프레임 ─────────────────────────────────────────────
 
 def make_fake_frame(t: float) -> bytes:
-    frame = np.zeros((480, 640, 3), dtype=np.uint8)
+    frame = np.zeros((720, 1280, 3), dtype=np.uint8)
     frame[:] = (
         int(40 + 20 * math.sin(t)),
         int(40 + 20 * math.sin(t + 2)),
@@ -119,8 +119,8 @@ def main():
             #     pub_camera_status.put(json.dumps({
             #         "timestamp": t,
             #         "connected": True,
-            #         "width":     640,
-            #         "height":    480,
+            #         "width":     1280,
+            #         "height":    720,
             #         "fps":       30,
             #     }))
             #     camera_status_sent = True
