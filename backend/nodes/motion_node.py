@@ -1,9 +1,9 @@
 import time
 import logging
-import threading
 
 from core.base_node import BaseNode
 from core.topic_map import Service, Topic
+from core.joint_state_cache import JointStateCache
 from core.units import deg_to_rad, rad_to_raw, raw_to_rad
 from modules.dynamixel.motor_config import MotorConfig, load_motor_config
 from modules.kinematics.motion_modes import MotionModes
@@ -25,11 +25,8 @@ class MotionNode(BaseNode):
         ]
 
         self._motion = MotionModes()
-        self._current_raw: dict[int, int] = {}
-        self._state_lock = threading.Lock()
-
-        # 현재 joint state 구독
-        self.create_subscriber(Topic.MOTOR_STATE_JOINT, self._on_motor_state)
+        self._cache = JointStateCache()
+        self._cache.subscribe(self)
 
         # 서비스 등록
         self.create_service(Service.MOTION_GET_TCP, self._srv_get_tcp)
@@ -39,18 +36,6 @@ class MotionNode(BaseNode):
         self.create_service(Service.MOTION_PIVOT_CLEAR, self._srv_pivot_clear)
 
     # ─── 단위 변환 ────────────────────────────────────────────
-
-    def _get_current_joint_angles_rad(self) -> list[float] | None:
-        with self._state_lock:
-            if not self._current_raw:
-                return None
-            result = []
-            for cfg in self._arm_cfgs:
-                raw = self._current_raw.get(cfg.id)
-                if raw is None:
-                    return None
-                result.append(raw_to_rad(raw, reverse=cfg.reverse))
-            return result
 
     def _joint_angles_rad_to_cmd(self, angles_rad: list[float]) -> list[dict]:
         return [
@@ -66,18 +51,10 @@ class MotionNode(BaseNode):
             for cfg, angle_rad in zip(self._arm_cfgs, angles_rad)
         ]
 
-    # ─── Subscriber ───────────────────────────────────────────
-
-    def _on_motor_state(self, data: dict) -> None:
-        joints = data.get("joints", [])
-        with self._state_lock:
-            for j in joints:
-                self._current_raw[j["id"]] = j["position"]
-
     # ─── Services ─────────────────────────────────────────────
 
     def _srv_get_tcp(self, req: dict) -> dict:
-        angles = self._get_current_joint_angles_rad()
+        angles = self._cache.get_joint_angles_rad(self._arm_cfgs)
         if angles is None:
             return {"success": False, "message": "관절 상태 수신 전", "data": {}}
         try:
@@ -101,7 +78,7 @@ class MotionNode(BaseNode):
         if target_pos is None:
             return {"success": False, "message": "position 필요", "data": {}}
 
-        angles = self._get_current_joint_angles_rad()
+        angles = self._cache.get_joint_angles_rad(self._arm_cfgs)
         if angles is None:
             return {"success": False, "message": "관절 상태 수신 전", "data": {}}
 
@@ -123,7 +100,7 @@ class MotionNode(BaseNode):
             return {"success": False, "message": str(e), "data": {}}
 
     def _srv_pivot_set(self, req: dict) -> dict:
-        angles = self._get_current_joint_angles_rad()
+        angles = self._cache.get_joint_angles_rad(self._arm_cfgs)
         if angles is None:
             return {"success": False, "message": "관절 상태 수신 전", "data": {}}
 
@@ -149,7 +126,7 @@ class MotionNode(BaseNode):
         if not self._motion.pivot_active:
             return {"success": False, "message": "pivot point 미설정", "data": {}}
 
-        angles = self._get_current_joint_angles_rad()
+        angles = self._cache.get_joint_angles_rad(self._arm_cfgs)
         if angles is None:
             return {"success": False, "message": "관절 상태 수신 전", "data": {}}
 

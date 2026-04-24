@@ -2,8 +2,11 @@ import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { CameraFeed } from "@/components/camera/CameraFeed";
+import { PivotControl } from "@/components/robot/PivotControl";
+import { MoveTCPControl } from "@/components/robot/MoveTCPControl";
 import { bridge } from "@/api/bridge";
 import { ServiceKey } from "@/constants/topics";
+import { useMotion } from "@/hooks/useMotion";
 
 export function Calibration() {
   return (
@@ -145,25 +148,20 @@ function HandEyeTab() {
   const [poseCount, setPoseCount] = useState(0);
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
+  const motion = useMotion();
 
-  const handleRecordPose = async () => {
+  const handleCapture = async () => {
     setLoading(true);
-    // TODO: 현재는 단위 행렬 사용 (실제로는 FK 결과를 넘겨야 함)
-    const R = [
-      [1, 0, 0],
-      [0, 1, 0],
-      [0, 0, 1],
-    ];
-    const t = [0, 0, 0];
-    const res = await bridge.callService(ServiceKey.CALIB_HANDEYE_START, {
-      R,
-      t,
-    });
+    const res = await bridge.callService(ServiceKey.CALIB_HANDEYE_START, {});
     setLoading(false);
     if (res.success) {
-      const data = res.data as { pose_count: number };
+      const data = res.data as { pose_count: number; detected: boolean };
       setPoseCount(data.pose_count);
-      setStatus(`✅ 포즈 기록됨 (${data.pose_count}개)`);
+      setStatus(
+        data.detected
+          ? `✅ 포즈 기록됨 (${data.pose_count}개)`
+          : "❌ 체커보드 미감지 — 포즈 미기록",
+      );
     } else {
       setStatus(`❌ ${res.message}`);
     }
@@ -173,25 +171,57 @@ function HandEyeTab() {
     setLoading(true);
     const res = await bridge.callService(ServiceKey.CALIB_HANDEYE_SAVE, {});
     setLoading(false);
-    setStatus(res.success ? `✅ 저장 완료` : `❌ ${res.message}`);
+    setStatus(res.success ? "✅ 저장 완료" : `❌ ${res.message}`);
   };
 
   return (
     <div className="flex h-full gap-4">
+      {/* 카메라 피드 */}
       <div className="flex-1">
         <CameraFeed className="h-2/3 w-full" />
       </div>
 
-      <div className="w-72 shrink-0 flex flex-col gap-4">
+      {/* 로봇 조작 */}
+      <div className="w-56 shrink-0 flex flex-col gap-3">
+        <div className="rounded-lg border bg-card p-4 flex flex-col gap-3">
+          <h2 className="text-sm font-semibold">Move TCP</h2>
+          <MoveTCPControl
+            tcpPose={motion.tcpPose}
+            loading={motion.loading}
+            compact
+            onMoveTCP={motion.moveTCP}
+            onGetTCP={motion.getTCP}
+          />
+        </div>
+
+        <div className="rounded-lg border bg-card p-4 flex flex-col gap-3">
+          <h2 className="text-sm font-semibold">Pivot</h2>
+          <PivotControl
+            tcpPose={motion.tcpPose}
+            pivotActive={motion.pivotActive}
+            compact
+            onPivotSet={motion.pivotSet}
+            onPivotRotate={motion.pivotRotate}
+            onPivotClear={motion.pivotClear}
+          />
+        </div>
+
+        {motion.error && (
+          <p className="text-xs text-destructive">{motion.error}</p>
+        )}
+      </div>
+
+      {/* 캡처 패널 */}
+      <div className="w-56 shrink-0 flex flex-col gap-4">
         <div className="rounded-lg border bg-card p-4 flex flex-col gap-3">
           <h2 className="text-sm font-semibold">Hand-Eye Calibration</h2>
           <p className="text-xs text-muted-foreground">
-            로봇을 다양한 자세로 이동 후 포즈를 기록하세요. 최소 3개 필요.
+            로봇을 다양한 자세로 이동 후 캡처하세요. 최소 3개 필요.
           </p>
 
           <div className="flex flex-col gap-2">
-            <Button size="sm" onClick={handleRecordPose} disabled={loading}>
-              {loading ? "처리 중..." : "포즈 기록"}
+            <Button size="sm" onClick={handleCapture} disabled={loading}>
+              {loading ? "처리 중..." : "캡처"}
             </Button>
             <Button
               size="sm"

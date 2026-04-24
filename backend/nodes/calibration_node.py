@@ -3,16 +3,20 @@ import numpy as np
 from pathlib import Path
 
 from core.base_node import BaseNode
-from core.topic_map import Service
+from core.topic_map import Service, Topic
+from core.joint_state_cache import JointStateCache
+from modules.dynamixel.motor_config import load_motor_config
 from modules.camera.capture import CameraCapture
 from modules.camera.stream import frame_to_base64
 from modules.calibration.intrinsic import IntrinsicCalibration
 from modules.calibration.hand_eye import HandEyeCalibration, Pose
 from modules.calibration.pose_estimator import PoseEstimator
+from modules.kinematics.solver import PybulletSolver
 
 logger = logging.getLogger(__name__)
 
 SAVE_DIR = Path(__file__).parents[2] / "robot" / "calibration"
+GRIPPER_ID = 6
 
 
 class CalibrationNode(BaseNode):
@@ -23,6 +27,12 @@ class CalibrationNode(BaseNode):
         self.intrinsic = IntrinsicCalibration()
         self.hand_eye = HandEyeCalibration()
         self.pose_estimator = PoseEstimator()
+        self.solver = PybulletSolver()
+
+        _, motor_cfgs = load_motor_config()
+        self._arm_cfgs = [m for m in motor_cfgs if m.id != GRIPPER_ID]
+        self._cache = JointStateCache()
+        self._cache.subscribe(self)
 
         # 내부 캘리브레이션
         self.create_service(Service.CALIB_CAPTURE, self._srv_capture)
@@ -102,17 +112,31 @@ class CalibrationNode(BaseNode):
                 "data": {},
             }
 
-        data = req.get("data", {})
-        gripper_R = np.array(data.get("R", np.eye(3).tolist()))
-        gripper_t = np.array(data.get("t", [0.0, 0.0, 0.0])).reshape(3, 1)
+        # FK로 gripper R, t 계산
+        joint_angles = self._cache.get_joint_angles_rad(self._arm_cfgs)
+        if joint_angles is None:
+            return {
+                "success": False,
+                "message": "관절 상태 수신 전",
+                "data": {},
+            }
 
+        R_list, t_list = self.solver.fk_to_matrix(joint_angles)
+        gripper_R = np.array(R_list)
+        gripper_t = np.array(t_list).reshape(3, 1)
+
+        # 카메라 캡처 + 체커보드 검출
         ret, frame = self.camera.read()
         if not ret or frame is None:
             return {"success": False, "message": "카메라 프레임 읽기 실패", "data": {}}
 
         detected, _ = self.intrinsic.capture(frame)
         if not detected:
-            return {"success": False, "message": "체커보드 미감지", "data": {}}
+            return {
+                "success": False,
+                "message": "체커보드 미감지",
+                "data": {"detected": False, "pose_count": len(self.hand_eye.poses)},
+            }
 
         pose = self.pose_estimator.estimate(
             obj_points=self.intrinsic.obj_points[-1],
@@ -135,7 +159,10 @@ class CalibrationNode(BaseNode):
         return {
             "success": True,
             "message": f"포즈 기록됨 ({len(self.hand_eye.poses)}개)",
-            "data": {"pose_count": len(self.hand_eye.poses)},
+            "data": {
+                "detected": True,
+                "pose_count": len(self.hand_eye.poses),
+            },
         }
 
     def _srv_handeye_save(self, req: dict) -> dict:
