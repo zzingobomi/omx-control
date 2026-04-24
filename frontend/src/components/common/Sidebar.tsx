@@ -5,8 +5,8 @@ import { cn } from "@/lib/utils";
 
 const navItems = [
   { to: "/", label: "Dashboard", icon: Gamepad2 },
-  { to: "/calibration", label: "Calibration", icon: Camera },
   { to: "/motion", label: "Motion", icon: Cpu },
+  { to: "/calibration", label: "Calibration", icon: Camera },
   { to: "/ai", label: "AI", icon: Bot },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
@@ -32,7 +32,7 @@ export function Sidebar() {
                 "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
                 isActive
                   ? "bg-accent text-accent-foreground font-medium"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
               )
             }
           >

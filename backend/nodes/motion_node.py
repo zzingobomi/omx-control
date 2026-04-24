@@ -1,9 +1,10 @@
+import time
 import logging
 import threading
 
 from core.base_node import BaseNode
 from core.topic_map import Service, Topic
-from core.units import radian_to_raw, raw_to_radian
+from core.units import deg_to_rad, rad_to_raw, raw_to_rad
 from modules.dynamixel.motor_config import MotorConfig, load_motor_config
 from modules.kinematics.motion_modes import MotionModes
 
@@ -48,14 +49,14 @@ class MotionNode(BaseNode):
                 raw = self._current_raw.get(cfg.id)
                 if raw is None:
                     return None
-                result.append(raw_to_radian(raw, reverse=cfg.reverse))
+                result.append(raw_to_rad(raw, reverse=cfg.reverse))
             return result
 
     def _joint_angles_rad_to_cmd(self, angles_rad: list[float]) -> list[dict]:
         return [
             {
                 "id": cfg.id,
-                "position": radian_to_raw(
+                "position": rad_to_raw(
                     angle_rad,
                     reverse=cfg.reverse,
                     min_raw=cfg.limit_min,
@@ -80,25 +81,100 @@ class MotionNode(BaseNode):
         if angles is None:
             return {"success": False, "message": "관절 상태 수신 전", "data": {}}
         try:
-            pass
+            pose = self._motion.get_tcp_pose(angles)
+            return {
+                "success": True,
+                "message": "ok",
+                "data": {
+                    "position": pose.position,
+                    "quaternion": pose.quaternion,
+                },
+            }
         except Exception as e:
             return {"success": False, "message": str(e), "data": {}}
 
     def _srv_move_tcp(self, req: dict) -> dict:
+        data = req.get("data", {})
+        target_pos = data.get("position")
+        target_quaternion = data.get("quaternion")
+
+        if target_pos is None:
+            return {"success": False, "message": "position 필요", "data": {}}
+
+        angles = self._get_current_joint_angles_rad()
+        if angles is None:
+            return {"success": False, "message": "관절 상태 수신 전", "data": {}}
+
         try:
-            pass
+            result = self._motion.move_tcp(target_pos, target_quaternion, angles)
+            if result is None:
+                return {"success": False, "message": "IK 수렴 실패", "data": {}}
+
+            cmds = self._joint_angles_rad_to_cmd(result)
+            self.publish(
+                Topic.MOTOR_CMD_JOINT,
+                {
+                    "timestamp": time.time(),
+                    "joints": cmds,
+                },
+            )
+            return {"success": True, "message": "ok", "data": {"joints": cmds}}
         except Exception as e:
             return {"success": False, "message": str(e), "data": {}}
 
     def _srv_pivot_set(self, req: dict) -> dict:
+        angles = self._get_current_joint_angles_rad()
+        if angles is None:
+            return {"success": False, "message": "관절 상태 수신 전", "data": {}}
+
         try:
-            pass
+            pose = self._motion.pivot_set(angles)
+            self.log("info", f"Pivot point 설정: {[f'{v:.3f}' for v in pose.position]}")
+            return {
+                "success": True,
+                "message": "ok",
+                "data": {
+                    "pivot_point": pose.position,
+                    "quaternion": pose.quaternion,
+                },
+            }
         except Exception as e:
             return {"success": False, "message": str(e), "data": {}}
 
     def _srv_pivot_rotate(self, req: dict) -> dict:
+        data = req.get("data", {})
+        delta_pitch_deg = data.get("delta_pitch", 0.0)
+        delta_yaw_deg = data.get("delta_yaw", 0.0)
+
+        if not self._motion.pivot_active:
+            return {"success": False, "message": "pivot point 미설정", "data": {}}
+
+        angles = self._get_current_joint_angles_rad()
+        if angles is None:
+            return {"success": False, "message": "관절 상태 수신 전", "data": {}}
+
         try:
-            pass
+            result = self._motion.pivot_rotate(
+                delta_pitch=deg_to_rad(delta_pitch_deg),
+                delta_yaw=deg_to_rad(delta_yaw_deg),
+                current_joint_angles=angles,
+            )
+            if result is None:
+                return {
+                    "success": False,
+                    "message": "IK 수렴 실패 (관절 한계 도달)",
+                    "data": {},
+                }
+
+            cmds = self._joint_angles_rad_to_cmd(result)
+            self.publish(
+                Topic.MOTOR_CMD_JOINT,
+                {
+                    "timestamp": time.time(),
+                    "joints": cmds,
+                },
+            )
+            return {"success": True, "message": "ok", "data": {"joints": cmds}}
         except Exception as e:
             return {"success": False, "message": str(e), "data": {}}
 

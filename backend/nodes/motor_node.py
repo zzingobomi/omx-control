@@ -4,7 +4,7 @@ import threading
 
 from core.base_node import BaseNode
 from core.topic_map import Topic, Service
-from core.units import raw_to_degree
+from core.units import raw_to_deg
 from modules.dynamixel.driver import DynamixelDriver
 from modules.dynamixel.motor_config import load_motor_config
 
@@ -80,7 +80,7 @@ class MotorNode(BaseNode):
                         "id": cfg.id,
                         "name": cfg.name,
                         "position": raw,
-                        "degree": raw_to_degree(raw),
+                        "degree": raw_to_deg(raw),
                         "velocity": 0.0,  # TODO: 추후 SyncRead 확장 시 구현
                         "torque": 0.0,  # TODO: 추후 SyncRead 확장 시 구현
                     }

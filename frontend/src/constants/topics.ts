@@ -19,6 +19,13 @@ export const ServiceKey = {
   MOTOR_REBOOT: "omx/motor/srv/reboot",
   MOTOR_GET_CONFIG: "omx/motor/srv/get_config",
 
+  // Motion
+  MOTION_GET_TCP: "omx/motion/srv/get_tcp",
+  MOTION_MOVE_TCP: "omx/motion/srv/move_tcp",
+  MOTION_PIVOT_SET: "omx/motion/srv/pivot_set",
+  MOTION_PIVOT_ROTATE: "omx/motion/srv/pivot_rotate",
+  MOTION_PIVOT_CLEAR: "omx/motion/srv/pivot_clear",
+
   // Calibration
   CALIB_CAPTURE: "omx/calib/srv/capture",
   CALIB_INTRINSIC_START: "omx/calib/srv/intrinsic/start",
