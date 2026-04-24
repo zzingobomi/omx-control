@@ -4,6 +4,7 @@ import threading
 
 from core.base_node import BaseNode
 from core.topic_map import Topic, Service
+from core.units import raw_to_degree
 from modules.dynamixel.driver import DynamixelDriver
 from modules.dynamixel.motor_config import load_motor_config
 
@@ -24,11 +25,11 @@ class MotorNode(BaseNode):
         self.torque_enabled = False
 
         # subscriber / service 등록
-        self.create_subscriber(Topic.MOTOR_CMD_JOINT,   self._on_cmd_joint)
-        self.create_service(Service.MOTOR_ENABLE,       self._srv_enable)
-        self.create_service(Service.MOTOR_REBOOT,       self._srv_reboot)
-        self.create_service(Service.MOTOR_SET_PROFILE,  self._srv_set_profile)
-        self.create_service(Service.MOTOR_GET_CONFIG,   self._srv_get_config)
+        self.create_subscriber(Topic.MOTOR_CMD_JOINT, self._on_cmd_joint)
+        self.create_service(Service.MOTOR_ENABLE, self._srv_enable)
+        self.create_service(Service.MOTOR_REBOOT, self._srv_reboot)
+        self.create_service(Service.MOTOR_SET_PROFILE, self._srv_set_profile)
+        self.create_service(Service.MOTOR_GET_CONFIG, self._srv_get_config)
 
     # ─── Lifecycle ───────────────────────────────────────────
 
@@ -74,18 +75,23 @@ class MotorNode(BaseNode):
                 if raw is None:
                     logger.warning(f"모터 {cfg.id}({cfg.name}) 위치 읽기 실패")
                     continue
-                joints.append({
-                    "id":       cfg.id,
-                    "name":     cfg.name,
-                    "position": raw,
-                    "degree":   DynamixelDriver.raw_to_degree(raw),
-                    "velocity": 0.0,  # TODO: 추후 SyncRead 확장 시 구현
-                    "torque":   0.0,  # TODO: 추후 SyncRead 확장 시 구현
-                })
-            self.publish(Topic.MOTOR_STATE_JOINT, {
-                "timestamp": time.time(),
-                "joints": joints,
-            })
+                joints.append(
+                    {
+                        "id": cfg.id,
+                        "name": cfg.name,
+                        "position": raw,
+                        "degree": raw_to_degree(raw),
+                        "velocity": 0.0,  # TODO: 추후 SyncRead 확장 시 구현
+                        "torque": 0.0,  # TODO: 추후 SyncRead 확장 시 구현
+                    }
+                )
+            self.publish(
+                Topic.MOTOR_STATE_JOINT,
+                {
+                    "timestamp": time.time(),
+                    "joints": joints,
+                },
+            )
         except Exception as e:
             logger.error(f"상태 발행 오류: {e}")
 
@@ -142,8 +148,7 @@ class MotorNode(BaseNode):
             if motor_id and velocity is not None:
                 self.driver.set_profile_velocity(motor_id, int(velocity))
             if motor_id and acceleration is not None:
-                self.driver.set_profile_acceleration(
-                    motor_id, int(acceleration))
+                self.driver.set_profile_acceleration(motor_id, int(acceleration))
             return {"success": True, "message": "ok", "data": {}}
         except Exception as e:
             return {"success": False, "message": str(e), "data": {}}
@@ -151,11 +156,11 @@ class MotorNode(BaseNode):
     def _srv_get_config(self, req: dict) -> dict:
         configs = [
             {
-                "id":    cfg.id,
-                "name":  cfg.name,
+                "id": cfg.id,
+                "name": cfg.name,
                 "model": cfg.model,
-                "mode":  cfg.mode,
-                "home":  cfg.home,
+                "mode": cfg.mode,
+                "home": cfg.home,
                 "limit": {"min": cfg.limit_min, "max": cfg.limit_max},
             }
             for cfg in self.motor_cfgs
@@ -163,10 +168,7 @@ class MotorNode(BaseNode):
         return {
             "success": True,
             "message": "ok",
-            "data": {
-                "motors": configs,
-                "torque_enabled": self.torque_enabled
-            }
+            "data": {"motors": configs, "torque_enabled": self.torque_enabled},
         }
 
     # ─── Service Clients (요청 보내기) ──────────────────

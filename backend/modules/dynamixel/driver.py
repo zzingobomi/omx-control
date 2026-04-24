@@ -65,12 +65,16 @@ class DynamixelDriver:
             return False
 
         self._sync_write_goal = GroupSyncWrite(
-            self.port_handler, self.packet_handler,
-            ADDR_GOAL_POSITION, LEN_GOAL_POSITION
+            self.port_handler,
+            self.packet_handler,
+            ADDR_GOAL_POSITION,
+            LEN_GOAL_POSITION,
         )
         self._sync_read_present = GroupSyncRead(
-            self.port_handler, self.packet_handler,
-            ADDR_PRESENT_POSITION, LEN_PRESENT_POSITION
+            self.port_handler,
+            self.packet_handler,
+            ADDR_PRESENT_POSITION,
+            LEN_PRESENT_POSITION,
         )
         for mid in self.motor_ids:
             self._sync_read_present.addParam(mid)
@@ -123,7 +127,8 @@ class DynamixelDriver:
             self._sync_write_goal.clearParam()
         if result != COMM_SUCCESS:
             logger.warning(
-                f"SyncWrite 실패: {self.packet_handler.getTxRxResult(result)}")
+                f"SyncWrite 실패: {self.packet_handler.getTxRxResult(result)}"
+            )
 
     def get_present_positions(self) -> dict[int, int]:
         assert self._sync_read_present is not None
@@ -131,11 +136,14 @@ class DynamixelDriver:
             result = self._sync_read_present.txRxPacket()
         if result != COMM_SUCCESS:
             logger.warning(
-                f"SyncRead 실패: {self.packet_handler.getTxRxResult(result)}")
+                f"SyncRead 실패: {self.packet_handler.getTxRxResult(result)}"
+            )
             return {}
         positions = {}
         for mid in self.motor_ids:
-            if self._sync_read_present.isAvailable(mid, ADDR_PRESENT_POSITION, LEN_PRESENT_POSITION):
+            if self._sync_read_present.isAvailable(
+                mid, ADDR_PRESENT_POSITION, LEN_PRESENT_POSITION
+            ):
                 positions[mid] = self._sync_read_present.getData(
                     mid, ADDR_PRESENT_POSITION, LEN_PRESENT_POSITION
                 )
@@ -176,14 +184,6 @@ class DynamixelDriver:
 
     # ─── Util ────────────────────────────────────────────────
 
-    @staticmethod
-    def raw_to_degree(raw: int) -> float:
-        return round(((raw - 2048) / 4095.0) * 360.0, 2)
-
-    @staticmethod
-    def degree_to_raw(degree: float) -> int:
-        return int((degree / 360.0) * 4095 + 2048)
-
     def _apply_limits(self, pos: int, cfg: MotorConfig) -> int:
         pos = max(cfg.limit_min, min(cfg.limit_max, pos))
         if cfg.reverse:
@@ -198,7 +198,8 @@ class DynamixelDriver:
             )
         if result != COMM_SUCCESS:
             logger.warning(
-                f"write1 실패 id={motor_id}: {self.packet_handler.getTxRxResult(result)}")
+                f"write1 실패 id={motor_id}: {self.packet_handler.getTxRxResult(result)}"
+            )
 
     def _write4(self, motor_id: int, addr: int, value: int) -> None:
         with self._lock:
@@ -207,4 +208,5 @@ class DynamixelDriver:
             )
         if result != COMM_SUCCESS:
             logger.warning(
-                f"write4 실패 id={motor_id}: {self.packet_handler.getTxRxResult(result)}")
+                f"write4 실패 id={motor_id}: {self.packet_handler.getTxRxResult(result)}"
+            )
