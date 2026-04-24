@@ -3,7 +3,7 @@ import numpy as np
 from pathlib import Path
 
 from core.base_node import BaseNode
-from core.topic_map import Service, Topic
+from core.topic_map import Service
 from core.joint_state_cache import JointStateCache
 from modules.dynamixel.motor_config import load_motor_config
 from modules.camera.capture import CameraCapture
