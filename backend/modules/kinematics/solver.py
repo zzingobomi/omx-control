@@ -10,7 +10,8 @@ Quaternion: TypeAlias = tuple[float, float, float, float]  # [x, y, z, w]
 RotMatrix3x3: TypeAlias = list[list[float]]  # 3x3 회전 행렬
 
 # ─── 상수 ──────────────────────────────────────────────────────
-URDF_PATH = Path(__file__).parents[3] / "robot" / "urdf" / "dmx_f" / "omx_f.urdf"
+URDF_PATH = Path(__file__).parents[3] / \
+    "robot" / "urdf" / "omx_f" / "omx_f.urdf"
 IK_MAX_ITER = 100
 IK_TOLERANCE = 1e-4
 IK_POS_ERROR_LIMIT = 0.01
@@ -61,7 +62,8 @@ class PybulletSolver:
 
     def _set_joint_positions(self, joint_angles: list[float]) -> None:
         for idx, angle in zip(self._joint_indices, joint_angles):
-            p.resetJointState(self._robot, idx, angle, physicsClientId=self._client)
+            p.resetJointState(self._robot, idx, angle,
+                              physicsClientId=self._client)
 
     def _get_ee_state(self) -> tuple[Position3, Quaternion]:
         state = p.getLinkState(
@@ -107,7 +109,8 @@ class PybulletSolver:
             self._set_joint_positions(angles)
             actual_pos, _ = self._get_ee_state()
             error = float(
-                np.linalg.norm(np.array(actual_pos) - np.array(target_position))
+                np.linalg.norm(np.array(actual_pos) -
+                               np.array(target_position))
             )
             if error > IK_POS_ERROR_LIMIT:
                 return None

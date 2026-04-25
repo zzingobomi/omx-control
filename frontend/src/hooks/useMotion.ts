@@ -4,24 +4,24 @@ import { ServiceKey } from "@/constants/topics";
 import type {
   TCPPose,
   MoveTCPRequest,
-  PivotRotateRequest,
+  OrbitRotateRequest,
 } from "@/types/motion";
 
 interface UseMotionReturn {
   tcpPose: TCPPose | null;
-  pivotActive: boolean;
+  orbitActive: boolean;
   loading: boolean;
   error: string | null;
   getTCP: () => Promise<void>;
   moveTCP: (req: MoveTCPRequest) => Promise<boolean>;
-  pivotSet: () => Promise<boolean>;
-  pivotRotate: (req: PivotRotateRequest) => Promise<boolean>;
-  pivotClear: () => Promise<void>;
+  orbitSet: () => Promise<boolean>;
+  orbitRotate: (req: OrbitRotateRequest) => Promise<boolean>;
+  orbitClear: () => Promise<void>;
 }
 
 export function useMotion(): UseMotionReturn {
   const [tcpPose, setTcpPose] = useState<TCPPose | null>(null);
-  const [pivotActive, setPivotActive] = useState(false);
+  const [orbitActive, setOrbitActive] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -39,7 +39,7 @@ export function useMotion(): UseMotionReturn {
     setLoading(true);
     const res = await bridge.callService(
       ServiceKey.MOTION_MOVE_TCP,
-      req as unknown as Record<string, unknown>,
+      req as unknown as Record<string, unknown>
     );
     setLoading(false);
     if (!res.success) setError(res.message);
@@ -47,12 +47,12 @@ export function useMotion(): UseMotionReturn {
     return res.success;
   }, []);
 
-  const pivotSet = useCallback(async (): Promise<boolean> => {
+  const orbitSet = useCallback(async (): Promise<boolean> => {
     setLoading(true);
-    const res = await bridge.callService(ServiceKey.MOTION_PIVOT_SET, {});
+    const res = await bridge.callService(ServiceKey.MOTION_ORBIT_SET, {});
     setLoading(false);
     if (res.success) {
-      setPivotActive(true);
+      setOrbitActive(true);
       setTcpPose(res.data as unknown as TCPPose);
       setError(null);
     } else {
@@ -61,34 +61,34 @@ export function useMotion(): UseMotionReturn {
     return res.success;
   }, []);
 
-  const pivotRotate = useCallback(
-    async (req: PivotRotateRequest): Promise<boolean> => {
+  const orbitRotate = useCallback(
+    async (req: OrbitRotateRequest): Promise<boolean> => {
       const res = await bridge.callService(
-        ServiceKey.MOTION_PIVOT_ROTATE,
-        req as unknown as Record<string, unknown>,
+        ServiceKey.MOTION_ORBIT_ROTATE,
+        req as unknown as Record<string, unknown>
       );
       if (!res.success) setError(res.message);
       else setError(null);
       return res.success;
     },
-    [],
+    []
   );
 
-  const pivotClear = useCallback(async () => {
-    await bridge.callService(ServiceKey.MOTION_PIVOT_CLEAR, {});
-    setPivotActive(false);
+  const orbitClear = useCallback(async () => {
+    await bridge.callService(ServiceKey.MOTION_ORBIT_CLEAR, {});
+    setOrbitActive(false);
     setError(null);
   }, []);
 
   return {
     tcpPose,
-    pivotActive,
+    orbitActive,
     loading,
     error,
     getTCP,
     moveTCP,
-    pivotSet,
-    pivotRotate,
-    pivotClear,
+    orbitSet,
+    orbitRotate,
+    orbitClear,
   };
 }

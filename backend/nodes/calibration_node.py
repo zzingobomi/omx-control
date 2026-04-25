@@ -34,13 +34,24 @@ class CalibrationNode(BaseNode):
         self._cache = JointStateCache()
         self._cache.subscribe(self)
 
+        path = SAVE_DIR / "intrinsic.npz"
+        loaded = self.intrinsic.load(path)
+
+        if loaded:
+            logger.info(f"Intrinsic 로드 완료: {path}")
+        else:
+            logger.warning("Intrinsic 파일 없음")
+
         # 내부 캘리브레이션
         self.create_service(Service.CALIB_CAPTURE, self._srv_capture)
-        self.create_service(Service.CALIB_INTRINSIC_START, self._srv_intrinsic_start)
-        self.create_service(Service.CALIB_INTRINSIC_SAVE, self._srv_intrinsic_save)
+        self.create_service(Service.CALIB_INTRINSIC_START,
+                            self._srv_intrinsic_start)
+        self.create_service(Service.CALIB_INTRINSIC_SAVE,
+                            self._srv_intrinsic_save)
 
         # Hand-Eye 캘리브레이션
-        self.create_service(Service.CALIB_HANDEYE_START, self._srv_handeye_start)
+        self.create_service(Service.CALIB_HANDEYE_START,
+                            self._srv_handeye_start)
         self.create_service(Service.CALIB_HANDEYE_SAVE, self._srv_handeye_save)
 
     # ─── 이미지 캡처 ─────────────────────────────────────────

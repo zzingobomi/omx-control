@@ -31,9 +31,10 @@ class MotionNode(BaseNode):
         # 서비스 등록
         self.create_service(Service.MOTION_GET_TCP, self._srv_get_tcp)
         self.create_service(Service.MOTION_MOVE_TCP, self._srv_move_tcp)
-        self.create_service(Service.MOTION_PIVOT_SET, self._srv_pivot_set)
-        self.create_service(Service.MOTION_PIVOT_ROTATE, self._srv_pivot_rotate)
-        self.create_service(Service.MOTION_PIVOT_CLEAR, self._srv_pivot_clear)
+        self.create_service(Service.MOTION_ORBIT_SET, self._srv_orbit_set)
+        self.create_service(Service.MOTION_ORBIT_ROTATE,
+                            self._srv_orbit_rotate)
+        self.create_service(Service.MOTION_ORBIT_CLEAR, self._srv_orbit_clear)
 
     # ─── 단위 변환 ────────────────────────────────────────────
 
@@ -73,7 +74,6 @@ class MotionNode(BaseNode):
     def _srv_move_tcp(self, req: dict) -> dict:
         data = req.get("data", {})
         target_pos = data.get("position")
-        target_quaternion = data.get("quaternion")
 
         if target_pos is None:
             return {"success": False, "message": "position 필요", "data": {}}
@@ -83,8 +83,12 @@ class MotionNode(BaseNode):
             return {"success": False, "message": "관절 상태 수신 전", "data": {}}
 
         try:
-            result = self._motion.move_tcp(target_pos, target_quaternion, angles)
+            result = self._motion.move_tcp(target_pos, angles)
             if result is None:
+                logger.warning(
+                    f"IK 실패 | target: {[f'{v:.4f}' for v in target_pos]} "
+                    f"| angles(rad): {[f'{v:.4f}' for v in angles]}"
+                )
                 return {"success": False, "message": "IK 수렴 실패", "data": {}}
 
             cmds = self._joint_angles_rad_to_cmd(result)
@@ -99,41 +103,42 @@ class MotionNode(BaseNode):
         except Exception as e:
             return {"success": False, "message": str(e), "data": {}}
 
-    def _srv_pivot_set(self, req: dict) -> dict:
+    def _srv_orbit_set(self, req: dict) -> dict:
         angles = self._cache.get_joint_angles_rad(self._arm_cfgs)
         if angles is None:
             return {"success": False, "message": "관절 상태 수신 전", "data": {}}
 
         try:
-            pose = self._motion.pivot_set(angles)
-            self.log("info", f"Pivot point 설정: {[f'{v:.3f}' for v in pose.position]}")
+            pose = self._motion.orbit_set(angles)
+            self.log(
+                "info", f"Orbit center 설정: {[f'{v:.3f}' for v in pose.position]}")
             return {
                 "success": True,
                 "message": "ok",
                 "data": {
-                    "pivot_point": pose.position,
+                    "position": pose.position,
                     "quaternion": pose.quaternion,
                 },
             }
         except Exception as e:
             return {"success": False, "message": str(e), "data": {}}
 
-    def _srv_pivot_rotate(self, req: dict) -> dict:
+    def _srv_orbit_rotate(self, req: dict) -> dict:
         data = req.get("data", {})
         delta_pitch_deg = data.get("delta_pitch", 0.0)
         delta_yaw_deg = data.get("delta_yaw", 0.0)
 
-        if not self._motion.pivot_active:
-            return {"success": False, "message": "pivot point 미설정", "data": {}}
+        if not self._motion.orbit_active:
+            return {"success": False, "message": "orbit center 미설정", "data": {}}
 
         angles = self._cache.get_joint_angles_rad(self._arm_cfgs)
         if angles is None:
             return {"success": False, "message": "관절 상태 수신 전", "data": {}}
 
         try:
-            result = self._motion.pivot_rotate(
-                delta_pitch=deg_to_rad(delta_pitch_deg),
-                delta_yaw=deg_to_rad(delta_yaw_deg),
+            result = self._motion.orbit_rotate(
+                delta_elevation=deg_to_rad(delta_pitch_deg),
+                delta_azimuth=deg_to_rad(delta_yaw_deg),
                 current_joint_angles=angles,
             )
             if result is None:
@@ -155,7 +160,7 @@ class MotionNode(BaseNode):
         except Exception as e:
             return {"success": False, "message": str(e), "data": {}}
 
-    def _srv_pivot_clear(self, req: dict) -> dict:
-        self._motion.pivot_clear()
-        self.log("info", "Pivot 모드 해제")
+    def _srv_orbit_clear(self, req: dict) -> dict:
+        self._motion.orbit_clear()
+        self.log("info", "Orbit 모드 해제")
         return {"success": True, "message": "ok", "data": {}}

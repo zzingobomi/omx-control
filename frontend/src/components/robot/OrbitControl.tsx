@@ -8,36 +8,37 @@ import {
   Crosshair,
   X,
 } from "lucide-react";
-import type { TCPPose, PivotRotateRequest } from "@/types/motion";
+import type { TCPPose, OrbitRotateRequest } from "@/types/motion";
 
 const STEP_DEG = 5; // 한 번 누를 때 이동 각도
 
-interface PivotControlProps {
+interface OrbitControlProps {
   tcpPose: TCPPose | null;
-  pivotActive: boolean;
+  orbitActive: boolean;
   compact?: boolean;
-  onPivotSet: () => Promise<boolean>;
-  onPivotRotate: (req: PivotRotateRequest) => Promise<boolean>;
-  onPivotClear: () => Promise<void>;
+  onOrbitSet: () => Promise<boolean>;
+  onOrbitRotate: (req: OrbitRotateRequest) => Promise<boolean>;
+  onOrbitClear: () => Promise<void>;
 }
 
-export function PivotControl({
+// TODO: 현재 버그 있음 (사용 X)
+export function OrbitControl({
   tcpPose,
-  pivotActive,
+  orbitActive,
   compact = false,
-  onPivotSet,
-  onPivotRotate,
-  onPivotClear,
-}: PivotControlProps) {
+  onOrbitSet,
+  onOrbitRotate,
+  onOrbitClear,
+}: OrbitControlProps) {
   // 버튼 누르고 있을 때 반복 실행
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const startRepeat = useCallback(
-    (req: PivotRotateRequest) => {
-      onPivotRotate(req);
-      intervalRef.current = setInterval(() => onPivotRotate(req), 150);
+    (req: OrbitRotateRequest) => {
+      onOrbitRotate(req);
+      intervalRef.current = setInterval(() => onOrbitRotate(req), 150);
     },
-    [onPivotRotate],
+    [onOrbitRotate]
   );
 
   const stopRepeat = useCallback(() => {
@@ -49,6 +50,7 @@ export function PivotControl({
 
   useEffect(() => () => stopRepeat(), [stopRepeat]);
 
+  // grid 포지션: null = 빈칸, "center" = crosshair, 나머지 = 방향 버튼
   type GridCell =
     | { type: "button"; icon: typeof ArrowUp; pitch: number; yaw: number }
     | { type: "center" }
@@ -57,7 +59,7 @@ export function PivotControl({
   const grid: GridCell[][] = [
     [
       { type: "empty" },
-      { type: "button", icon: ArrowUp, pitch: -STEP_DEG, yaw: 0 },
+      { type: "button", icon: ArrowUp, pitch: STEP_DEG, yaw: 0 }, // elevation 증가 = TCP 위로
       { type: "empty" },
     ],
     [
@@ -67,7 +69,7 @@ export function PivotControl({
     ],
     [
       { type: "empty" },
-      { type: "button", icon: ArrowDown, pitch: STEP_DEG, yaw: 0 },
+      { type: "button", icon: ArrowDown, pitch: -STEP_DEG, yaw: 0 }, // elevation 감소 = TCP 아래로
       { type: "empty" },
     ],
   ];
@@ -76,39 +78,41 @@ export function PivotControl({
     <div className="flex flex-col gap-3">
       {!compact && (
         <p className="text-xs text-muted-foreground">
-          현재 TCP 위치를 pivot point로 고정하고 방향을 조작하세요.
+          Orbit center를 설정하면 TCP가 그 주변을 공전합니다.
         </p>
       )}
 
-      {/* Pivot point 설정/해제 */}
+      {/* Orbit center 설정/해제 */}
       <div className="flex gap-2">
         <Button
           size="sm"
-          variant={pivotActive ? "secondary" : "default"}
+          variant={orbitActive ? "secondary" : "default"}
           className="flex-1 gap-1"
-          onClick={onPivotSet}
-          disabled={pivotActive}
+          onClick={onOrbitSet}
+          disabled={orbitActive}
         >
           <Crosshair className="h-3 w-3" />
-          {pivotActive ? "Pivot 설정됨" : "Pivot 설정"}
+          {orbitActive ? "Orbit 설정됨" : "Orbit 설정"}
         </Button>
-        {pivotActive && (
-          <Button size="sm" variant="outline" onClick={onPivotClear}>
+        {orbitActive && (
+          <Button size="sm" variant="outline" onClick={onOrbitClear}>
             <X className="h-3 w-3" />
           </Button>
         )}
       </div>
 
-      {/* Pivot point 위치 표시 */}
-      {!compact && tcpPose && pivotActive && (
+      {/* Orbit center 위치 표시 */}
+      {!compact && tcpPose && orbitActive && (
         <div className="rounded-md bg-muted px-3 py-2 text-xs font-mono text-muted-foreground">
-          Pivot: [{tcpPose.position.map((v) => v.toFixed(3)).join(", ")}]
+          Orbit: [{tcpPose.position.map((v) => v.toFixed(3)).join(", ")}]
         </div>
       )}
 
       {/* 방향 조작 패드 */}
       <div
-        className={`grid grid-cols-3 gap-1 place-items-center ${!pivotActive && "opacity-40 pointer-events-none"}`}
+        className={`grid grid-cols-3 gap-1 place-items-center ${
+          !orbitActive && "opacity-40 pointer-events-none"
+        }`}
       >
         {grid.flat().map((cell, i) => {
           if (cell.type === "empty") return <div key={i} />;

@@ -2,11 +2,11 @@ import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { CameraFeed } from "@/components/camera/CameraFeed";
-import { PivotControl } from "@/components/robot/PivotControl";
 import { MoveTCPControl } from "@/components/robot/MoveTCPControl";
 import { bridge } from "@/api/bridge";
 import { ServiceKey } from "@/constants/topics";
 import { useMotion } from "@/hooks/useMotion";
+import { useJointControl } from "@/hooks/useJointControl";
 
 export function Calibration() {
   return (
@@ -62,7 +62,7 @@ function IntrinsicTab() {
       setStatus(
         data.detected
           ? `✅ 감지 성공 (${data.captured_count}장)`
-          : "❌ 체커보드 미감지",
+          : "❌ 체커보드 미감지"
       );
       if (data.preview) setPreview(data.preview);
     }
@@ -84,18 +84,7 @@ function IntrinsicTab() {
   return (
     <div className="flex h-full gap-4">
       <div className="flex-1">
-        <CameraFeed
-          className="h-2/3 w-full"
-          overlay={
-            preview ? (
-              <img
-                src={`data:image/jpeg;base64,${preview}`}
-                className="h-full w-full object-contain"
-                alt="preview"
-              />
-            ) : undefined
-          }
-        />
+        <CameraFeed className="h-2/3 w-full" />
       </div>
 
       <div className="w-72 shrink-0 flex flex-col gap-4">
@@ -137,6 +126,17 @@ function IntrinsicTab() {
 
           {status && <p className="text-xs text-muted-foreground">{status}</p>}
         </div>
+
+        {preview && (
+          <div className="h-1/3 rounded-lg border bg-card p-2">
+            <p className="text-xs text-muted-foreground mb-1">Last Capture</p>
+            <img
+              src={`data:image/jpeg;base64,${preview}`}
+              className="w-full h-full object-contain rounded"
+              alt="preview"
+            />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -149,6 +149,7 @@ function HandEyeTab() {
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
   const motion = useMotion();
+  const { torqueEnabled, enableTorque } = useJointControl();
 
   const handleCapture = async () => {
     setLoading(true);
@@ -160,7 +161,7 @@ function HandEyeTab() {
       setStatus(
         data.detected
           ? `✅ 포즈 기록됨 (${data.pose_count}개)`
-          : "❌ 체커보드 미감지 — 포즈 미기록",
+          : "❌ 체커보드 미감지 — 포즈 미기록"
       );
     } else {
       setStatus(`❌ ${res.message}`);
@@ -185,24 +186,20 @@ function HandEyeTab() {
       <div className="w-56 shrink-0 flex flex-col gap-3">
         <div className="rounded-lg border bg-card p-4 flex flex-col gap-3">
           <h2 className="text-sm font-semibold">Move TCP</h2>
+
+          <Button
+            size="sm"
+            variant={torqueEnabled ? "destructive" : "default"}
+            onClick={() => enableTorque(!torqueEnabled)}
+          >
+            {torqueEnabled ? "Torque OFF" : "Torque ON"}
+          </Button>
           <MoveTCPControl
             tcpPose={motion.tcpPose}
             loading={motion.loading}
             compact
             onMoveTCP={motion.moveTCP}
             onGetTCP={motion.getTCP}
-          />
-        </div>
-
-        <div className="rounded-lg border bg-card p-4 flex flex-col gap-3">
-          <h2 className="text-sm font-semibold">Pivot</h2>
-          <PivotControl
-            tcpPose={motion.tcpPose}
-            pivotActive={motion.pivotActive}
-            compact
-            onPivotSet={motion.pivotSet}
-            onPivotRotate={motion.pivotRotate}
-            onPivotClear={motion.pivotClear}
           />
         </div>
 

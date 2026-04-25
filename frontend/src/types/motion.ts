@@ -1,16 +1,18 @@
-export type MotionMode = "joint" | "move_tcp" | "pivot";
+export type MotionMode = "joint" | "move_tcp" | "orbit";
+
+export type Vec3 = [number, number, number];
+export type Quaternion = [number, number, number, number];
 
 export interface TCPPose {
-  position: [number, number, number]; // [x, y, z] 미터
-  quaternion: [number, number, number, number]; // quaternion [x, y, z, w]
+  position: Vec3; // [x, y, z] 미터
+  quaternion: Quaternion;
 }
 
 export interface MoveTCPRequest {
-  position: [number, number, number];
-  quaternion?: [number, number, number, number] | null;
+  position: Vec3;
 }
 
-export interface PivotRotateRequest {
+export interface OrbitRotateRequest {
   delta_pitch: number; // degree
   delta_yaw: number; // degree
 }
