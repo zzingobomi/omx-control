@@ -21,7 +21,7 @@ interface MoveTCPControlProps {
   loading: boolean;
   compact?: boolean;
   onMoveTCP: (req: MoveTCPRequest) => Promise<boolean>;
-  onGetTCP: () => Promise<void>;
+  onGetTCP: () => Promise<TCPPose | null>;
 }
 
 export function MoveTCPControl({

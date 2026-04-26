@@ -11,6 +11,9 @@ class Topic:
     SYSTEM_HEARTBEAT = "omx/system/heartbeat"
     SYSTEM_LOG = "omx/system/log"
 
+    # ─── Motion ───────────────────────────────────────────────
+    MOTION_STATE_TRAJ = "omx/motion/state/trajectory"
+
 
 class Service:
     # ─── Motor ───────────────────────────────────────────────
@@ -18,6 +21,7 @@ class Service:
     MOTOR_SET_PROFILE = "omx/motor/srv/set_profile"
     MOTOR_REBOOT = "omx/motor/srv/reboot"
     MOTOR_GET_CONFIG = "omx/motor/srv/get_config"
+    MOTOR_MOVE_J = "omx/motor/srv/move_j"
 
     # ─── Motion ───────────────────────────────────────────────
     MOTION_GET_TCP = "omx/motion/srv/get_tcp"
@@ -25,6 +29,8 @@ class Service:
     MOTION_ORBIT_SET = "omx/motion/srv/orbit_set"
     MOTION_ORBIT_ROTATE = "omx/motion/srv/orbit_rotate"
     MOTION_ORBIT_CLEAR = "omx/motion/srv/orbit_clear"
+    MOTION_MOVE_L = "omx/motion/srv/move_l"
+    MOTION_STOP = "omx/motion/srv/stop"
 
     # ─── Calibration ─────────────────────────────────────────
     CALIB_INTRINSIC_START = "omx/calib/srv/intrinsic/start"

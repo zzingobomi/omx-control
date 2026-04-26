@@ -32,6 +32,8 @@ LEN_GOAL_POSITION = 4
 LEN_PRESENT_POSITION = 4
 LEN_PRESENT_VELOCITY = 4
 LEN_PRESENT_LOAD = 2
+LEN_PROFILE_VELOCITY = 4
+LEN_PROFILE_ACCEL = 4
 
 OPERATING_MODE_POSITION = 3
 PROTOCOL_VERSION = 2.0
@@ -49,8 +51,10 @@ class DynamixelDriver:
         self.port_handler = PortHandler(port)
         self.packet_handler = PacketHandler(PROTOCOL_VERSION)
 
-        self._sync_write_goal: GroupSyncWrite | None = None
-        self._sync_read_present: GroupSyncRead | None = None
+        self._sync_write_goal:        GroupSyncWrite | None = None
+        self._sync_write_profile_vel: GroupSyncWrite | None = None
+        self._sync_write_profile_acc: GroupSyncWrite | None = None
+        self._sync_read_present:      GroupSyncRead | None = None
         self._lock = threading.Lock()
 
     # ─── 연결 ────────────────────────────────────────────────
@@ -65,16 +69,20 @@ class DynamixelDriver:
             return False
 
         self._sync_write_goal = GroupSyncWrite(
-            self.port_handler,
-            self.packet_handler,
-            ADDR_GOAL_POSITION,
-            LEN_GOAL_POSITION,
+            self.port_handler, self.packet_handler,
+            ADDR_GOAL_POSITION, LEN_GOAL_POSITION,
+        )
+        self._sync_write_profile_vel = GroupSyncWrite(
+            self.port_handler, self.packet_handler,
+            ADDR_PROFILE_VELOCITY, LEN_PROFILE_VELOCITY,
+        )
+        self._sync_write_profile_acc = GroupSyncWrite(
+            self.port_handler, self.packet_handler,
+            ADDR_PROFILE_ACCELERATION, LEN_PROFILE_ACCEL,
         )
         self._sync_read_present = GroupSyncRead(
-            self.port_handler,
-            self.packet_handler,
-            ADDR_PRESENT_POSITION,
-            LEN_PRESENT_POSITION,
+            self.port_handler, self.packet_handler,
+            ADDR_PRESENT_POSITION, LEN_PRESENT_POSITION,
         )
         for mid in self.motor_ids:
             self._sync_read_present.addParam(mid)
@@ -106,29 +114,21 @@ class DynamixelDriver:
     # ─── 위치 제어 ────────────────────────────────────────────
 
     def set_goal_position(self, motor_id: int, position: int) -> None:
-        cfg = self.motors[motor_id]
-        pos = self._apply_limits(position, cfg)
+        pos = self._apply_limits(position, self.motors[motor_id])
         self._write4(motor_id, ADDR_GOAL_POSITION, pos)
 
     def set_goal_positions_sync(self, positions: dict[int, int]) -> None:
         assert self._sync_write_goal is not None
         with self._lock:
             for mid, pos in positions.items():
-                cfg = self.motors[mid]
-                pos = self._apply_limits(pos, cfg)
-                param = [
-                    DXL_LOBYTE(DXL_LOWORD(pos)),
-                    DXL_HIBYTE(DXL_LOWORD(pos)),
-                    DXL_LOBYTE(DXL_HIWORD(pos)),
-                    DXL_HIBYTE(DXL_HIWORD(pos)),
-                ]
+                pos = self._apply_limits(pos, self.motors[mid])
+                param = self._int_to_4bytes(pos)
                 self._sync_write_goal.addParam(mid, param)
             result = self._sync_write_goal.txPacket()
             self._sync_write_goal.clearParam()
         if result != COMM_SUCCESS:
             logger.warning(
-                f"SyncWrite 실패: {self.packet_handler.getTxRxResult(result)}"
-            )
+                f"SyncWrite(goal) 실패: {self.packet_handler.getTxRxResult(result)}")
 
     def get_present_positions(self) -> dict[int, int]:
         assert self._sync_read_present is not None
@@ -136,14 +136,11 @@ class DynamixelDriver:
             result = self._sync_read_present.txRxPacket()
         if result != COMM_SUCCESS:
             logger.warning(
-                f"SyncRead 실패: {self.packet_handler.getTxRxResult(result)}"
-            )
+                f"SyncRead 실패: {self.packet_handler.getTxRxResult(result)}")
             return {}
         positions = {}
         for mid in self.motor_ids:
-            if self._sync_read_present.isAvailable(
-                mid, ADDR_PRESENT_POSITION, LEN_PRESENT_POSITION
-            ):
+            if self._sync_read_present.isAvailable(mid, ADDR_PRESENT_POSITION, LEN_PRESENT_POSITION):
                 positions[mid] = self._sync_read_present.getData(
                     mid, ADDR_PRESENT_POSITION, LEN_PRESENT_POSITION
                 )
@@ -166,14 +163,34 @@ class DynamixelDriver:
     # ─── 프로파일 설정 ────────────────────────────────────────
 
     def set_profile_velocity(self, motor_id: int, velocity: int) -> None:
-        self.torque_disable(motor_id)
         self._write4(motor_id, ADDR_PROFILE_VELOCITY, velocity)
-        self.torque_enable(motor_id)
 
     def set_profile_acceleration(self, motor_id: int, acceleration: int) -> None:
-        self.torque_disable(motor_id)
         self._write4(motor_id, ADDR_PROFILE_ACCELERATION, acceleration)
-        self.torque_enable(motor_id)
+
+    def set_profile_velocities_sync(self, velocities: dict[int, int]) -> None:
+        assert self._sync_write_profile_vel is not None
+        with self._lock:
+            for mid, vel in velocities.items():
+                self._sync_write_profile_vel.addParam(
+                    mid, self._int_to_4bytes(vel))
+            result = self._sync_write_profile_vel.txPacket()
+            self._sync_write_profile_vel.clearParam()
+        if result != COMM_SUCCESS:
+            logger.warning(
+                f"SyncWrite(profile_vel) 실패: {self.packet_handler.getTxRxResult(result)}")
+
+    def set_profile_accelerations_sync(self, accelerations: dict[int, int]) -> None:
+        assert self._sync_write_profile_acc is not None
+        with self._lock:
+            for mid, acc in accelerations.items():
+                self._sync_write_profile_acc.addParam(
+                    mid, self._int_to_4bytes(acc))
+            result = self._sync_write_profile_acc.txPacket()
+            self._sync_write_profile_acc.clearParam()
+        if result != COMM_SUCCESS:
+            logger.warning(
+                f"SyncWrite(profile_acc) 실패: {self.packet_handler.getTxRxResult(result)}")
 
     # ─── 재시작 ──────────────────────────────────────────────
 
@@ -191,22 +208,29 @@ class DynamixelDriver:
             pos = center - (pos - center)
         return pos
 
+    @staticmethod
+    def _int_to_4bytes(value: int) -> list[int]:
+        return [
+            DXL_LOBYTE(DXL_LOWORD(value)),
+            DXL_HIBYTE(DXL_LOWORD(value)),
+            DXL_LOBYTE(DXL_HIWORD(value)),
+            DXL_HIBYTE(DXL_HIWORD(value)),
+        ]
+
     def _write1(self, motor_id: int, addr: int, value: int) -> None:
         with self._lock:
-            result, error = self.packet_handler.write1ByteTxRx(
+            result, _ = self.packet_handler.write1ByteTxRx(
                 self.port_handler, motor_id, addr, value
             )
         if result != COMM_SUCCESS:
             logger.warning(
-                f"write1 실패 id={motor_id}: {self.packet_handler.getTxRxResult(result)}"
-            )
+                f"write1 실패 id={motor_id}: {self.packet_handler.getTxRxResult(result)}")
 
     def _write4(self, motor_id: int, addr: int, value: int) -> None:
         with self._lock:
-            result, error = self.packet_handler.write4ByteTxRx(
+            result, _ = self.packet_handler.write4ByteTxRx(
                 self.port_handler, motor_id, addr, value
             )
         if result != COMM_SUCCESS:
             logger.warning(
-                f"write4 실패 id={motor_id}: {self.packet_handler.getTxRxResult(result)}"
-            )
+                f"write4 실패 id={motor_id}: {self.packet_handler.getTxRxResult(result)}")
