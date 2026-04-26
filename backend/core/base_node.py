@@ -38,7 +38,7 @@ class BaseNode:
         self._subscribers.append(sub)
         logger.debug(f"[{self.node_name}] subscriber 등록: {topic}")
 
-    # ─── Service (Queryable) ─────────────────────────────────
+    # ─── Service (Queryable / 서버) ──────────────────────────
 
     def create_service(
         self, key: str, handler: Callable[[dict], dict]
@@ -58,6 +58,42 @@ class BaseNode:
         queryable = self.session.declare_queryable(key, _handler)
         self._queryables.append(queryable)
         logger.debug(f"[{self.node_name}] service 등록: {key}")
+
+    # ─── Service Client (Get / 클라이언트) ───────────────────
+
+    def call_service(
+        self,
+        key: str,
+        data: dict,
+        timeout: float = 5.0,
+    ) -> dict:
+        """
+        Zenoh Get으로 서비스를 호출하고 응답을 반환.
+
+        Args:
+            key:     서비스 키 (Service.* 상수)
+            data:    요청 데이터 dict
+            timeout: 응답 대기 시간 (초, 기본 5.0)
+
+        Returns:
+            {"success": bool, "message": str, "data": dict}
+            타임아웃 또는 오류 시 success=False 반환.
+        """
+        payload = json.dumps({
+            "timestamp": time.time(),
+            "data":      data,
+        }).encode()
+
+        try:
+            replies = self.session.get(key, payload=payload, timeout=timeout)
+            for reply in replies:
+                return json.loads(reply.ok.payload.to_bytes())
+            # 응답 없음 (빈 iterator)
+            logger.warning(f"[{self.node_name}] service 응답 없음: {key}")
+            return {"success": False, "message": "응답 없음", "data": {}}
+        except Exception as e:
+            logger.error(f"[{self.node_name}] call_service 오류 ({key}): {e}")
+            return {"success": False, "message": str(e), "data": {}}
 
     # ─── Lifecycle ───────────────────────────────────────────
 
@@ -103,9 +139,9 @@ class BaseNode:
     def _heartbeat_loop(self) -> None:
         while self._running:
             self.publish(Topic.SYSTEM_HEARTBEAT, {
-                "node": self.node_name,
+                "node":      self.node_name,
                 "timestamp": time.time(),
-                "status": "ok",
+                "status":    "ok",
             })
             time.sleep(1.0)
 
@@ -113,9 +149,9 @@ class BaseNode:
 
     def log(self, level: str, msg: str) -> None:
         self.publish(Topic.SYSTEM_LOG, {
-            "node": self.node_name,
+            "node":      self.node_name,
             "timestamp": time.time(),
-            "level": level,
-            "message": msg,
+            "level":     level,
+            "message":   msg,
         })
         getattr(logger, level, logger.info)(f"[{self.node_name}] {msg}")

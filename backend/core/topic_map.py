@@ -19,6 +19,7 @@ class Service:
     # ─── Motor ───────────────────────────────────────────────
     MOTOR_ENABLE = "omx/motor/srv/enable"
     MOTOR_SET_PROFILE = "omx/motor/srv/set_profile"
+    MOTOR_SET_PROFILE_ALL = "omx/motor/srv/set_profile_all"
     MOTOR_REBOOT = "omx/motor/srv/reboot"
     MOTOR_GET_CONFIG = "omx/motor/srv/get_config"
     MOTOR_MOVE_J = "omx/motor/srv/move_j"

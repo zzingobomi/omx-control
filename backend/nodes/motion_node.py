@@ -14,18 +14,17 @@ from modules.kinematics.motion_modes import MotionModes
 logger = logging.getLogger(__name__)
 
 GRIPPER_ID = 6
+MOVEL_FREQ = 50       # Hz (waypoint 간격 20ms)
+_T_ACCEL = 0.20
+_T_DECEL = 0.20
 
-# MoveL 실행 주파수 (Hz)
-MOVEL_FREQ = 20
+# IK 연산이 dt를 초과하면 경고 (50Hz → dt=20ms)
+_IK_WARN_THRESHOLD = 1.0 / MOVEL_FREQ * 0.8  # dt의 80% = 16ms
 
-# Trapezoidal profile 비율
-_T_ACCEL = 0.20   # 가속 구간
-_T_DECEL = 0.20   # 감속 구간
-_T_CRUISE = 1.0 - _T_ACCEL - _T_DECEL
-
-# MoveL 시 모터 profile 설정 (waypoint 추종용 빠른 응답)
-MOVEL_PROFILE_VEL = 200   # ≈ 45.8 rpm
-MOVEL_PROFILE_ACC = 50    # ≈ 10728 rev/min²
+# MoveL 종료 후 복원할 기본 profile
+# MoveJ는 실행 시 자체 계산으로 덮어쓰므로 MoveTCP/Orbit 기준으로만 맞추면 됨
+_DEFAULT_PROFILE_VEL = 150   # ≈ 34 rpm
+_DEFAULT_PROFILE_ACC = 40    # ≈ 8583 rev/min²
 
 
 class MotionNode(BaseNode):
@@ -36,12 +35,12 @@ class MotionNode(BaseNode):
         self._arm_cfgs: list[MotorConfig] = [
             m for m in self._motor_cfgs if m.id != GRIPPER_ID
         ]
+        self._arm_ids = [cfg.id for cfg in self._arm_cfgs]
 
         self._motion = MotionModes()
         self._cache = JointStateCache()
         self._cache.subscribe(self)
 
-        # 트래젝토리 실행 상태
         self._traj_thread: threading.Thread | None = None
         self._traj_stop = threading.Event()
 
@@ -82,10 +81,26 @@ class MotionNode(BaseNode):
             "timestamp": time.time(),
         })
 
+    # ─── Profile 헬퍼 ─────────────────────────────────────────
+
+    def _set_arm_profile(self, velocity: int, acceleration: int) -> bool:
+        """
+        arm 전체 Profile Velocity/Acceleration 일괄 설정.
+        velocity=0, acceleration=0 → 내장 프로파일 비활성화 (unlimited).
+        """
+        res = self.call_service(
+            Service.MOTOR_SET_PROFILE_ALL,
+            {
+                "ids":          self._arm_ids,
+                "velocity":     velocity,
+                "acceleration": acceleration,
+            },
+        )
+        return res.get("success", False)
+
     # ─── 트래젝토리 관리 ──────────────────────────────────────
 
     def _stop_trajectory(self) -> None:
-        """실행 중인 트래젝토리를 중단하고 스레드가 종료될 때까지 대기."""
         if self._traj_thread and self._traj_thread.is_alive():
             self._traj_stop.set()
             self._traj_thread.join(timeout=2.0)
@@ -182,7 +197,7 @@ class MotionNode(BaseNode):
         MoveL: TCP 직선 보간 (Trapezoidal velocity profile).
 
         Request data:
-            position : [x, y, z]  (미터 단위, URDF 기준)
+            position : [x, y, z]  (미터, URDF 기준)
             duration : float      (초, 0.5 ~ 30.0)
         """
         data = req.get("data", {})
@@ -202,7 +217,6 @@ class MotionNode(BaseNode):
             start_pos = list(start_pose.position)
             target_list = list(target_pos)
 
-            # 기존 트래젝토리 중단
             self._stop_trajectory()
 
             self._traj_thread = threading.Thread(
@@ -225,7 +239,6 @@ class MotionNode(BaseNode):
             return {"success": False, "message": str(e), "data": {}}
 
     def _srv_stop(self, req: dict) -> dict:
-        """실행 중인 트래젝토리(MoveL) 즉시 중단."""
         was_running = self._traj_thread and self._traj_thread.is_alive()
         self._stop_trajectory()
         if was_running:
@@ -237,81 +250,88 @@ class MotionNode(BaseNode):
 
     def _run_move_l(
         self,
-        start_pos:     list[float],
-        end_pos:       list[float],
-        duration:      float,
-        start_angles:  list[float],
+        start_pos:    list[float],
+        end_pos:      list[float],
+        duration:     float,
+        start_angles: list[float],
     ) -> None:
         """
-        Trapezoidal velocity profile로 직선 경로를 분할하여 20Hz로 cmd 발행.
-        IK 실패 시 즉시 중단.
+        ① 시작: Profile vel=0, acc=0 → 내장 프로파일 비활성화
+           모터가 50ms 간격 waypoint를 지연·오버슈트 없이 즉시 추종
+        ② 20Hz waypoint 발행 (Trapezoidal s(t))
+        ③ 종료(완료/실패/중단/예외): finally로 Profile 복원 보장
         """
         dt = 1.0 / MOVEL_FREQ
         n_steps = max(1, int(duration * MOVEL_FREQ))
-
         start = np.array(start_pos, dtype=float)
         end = np.array(end_pos,   dtype=float)
 
         current_angles = list(start_angles)
+
+        # ① Profile 비활성화
+        ok = self._set_arm_profile(velocity=0, acceleration=0)
+        if not ok:
+            logger.warning("MoveL: profile 비활성화 실패 — 계속 진행")
+
         t_start = time.time()
 
-        # MoveL 동안 모터 profile velocity 를 빠른 응답 값으로 일시 설정
-        # (motor_node에 직접 접근하지 않고 MOTOR_SET_PROFILE 서비스 호출 대신
-        #  MOTOR_CMD_JOINT 에 profile 필드를 포함시키는 방식은 현재 미지원이므로
-        #  여기서는 profile을 건드리지 않고 waypoint 간격으로 제어함)
+        try:
+            for i in range(n_steps):
+                if self._traj_stop.is_set():
+                    self._publish_traj_state("stopped", (i + 1) / n_steps)
+                    return
 
-        for i in range(n_steps):
-            if self._traj_stop.is_set():
-                self._publish_traj_state("stopped", (i + 1) / n_steps)
-                return
+                t_norm = (i + 1) / n_steps
+                s = self._trapezoid_s(t_norm, _T_ACCEL, _T_DECEL)
+                waypoint = (start + s * (end - start)).tolist()
 
-            # 트래젝토리 파라미터 t ∈ (0, 1]
-            t_normalized = (i + 1) / n_steps
-            s = self._trapezoid_s(t_normalized, _T_ACCEL, _T_DECEL)
+                ik_t0 = time.time()
+                result = self._motion.move_tcp(waypoint, current_angles)
+                ik_dt = time.time() - ik_t0
+                if ik_dt > _IK_WARN_THRESHOLD:
+                    logger.warning(
+                        f"MoveL IK 느림 | {ik_dt*1000:.1f}ms > {_IK_WARN_THRESHOLD*1000:.0f}ms "
+                        f"(step={i+1}/{n_steps})"
+                    )
 
-            waypoint = (start + s * (end - start)).tolist()
+                if result is None:
+                    logger.warning(
+                        f"MoveL IK 실패 | step={i+1}/{n_steps} "
+                        f"| waypoint={[f'{v:.4f}' for v in waypoint]}"
+                    )
+                    self._publish_traj_state("failed", t_norm)
+                    return
 
-            result = self._motion.move_tcp(waypoint, current_angles)
-            if result is None:
-                logger.warning(
-                    f"MoveL IK 실패 | step={i+1}/{n_steps} "
-                    f"| waypoint={[f'{v:.4f}' for v in waypoint]}"
-                )
-                self._publish_traj_state("failed", t_normalized)
-                return
+                current_angles = result
+                self._publish_cmd(result)
+                self._publish_traj_state("running", t_norm)
 
-            current_angles = result
-            self._publish_cmd(result)
-            self._publish_traj_state("running", t_normalized)
+                next_t = t_start + (i + 1) * dt
+                sleep_time = next_t - time.time()
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
 
-            # 다음 스텝 타이밍까지 정밀 대기
-            next_t = t_start + (i + 1) * dt
-            sleep_time = next_t - time.time()
-            if sleep_time > 0:
-                time.sleep(sleep_time)
+            self._publish_traj_state("done", 1.0)
+            self.log("info", "MoveL 완료")
 
-        self._publish_traj_state("done", 1.0)
-        self.log("info", "MoveL 완료")
+        finally:
+            # ③ 완료/실패/중단/예외 모든 경로에서 Profile 복원
+            ok = self._set_arm_profile(
+                velocity=_DEFAULT_PROFILE_VEL,
+                acceleration=_DEFAULT_PROFILE_ACC,
+            )
+            if not ok:
+                logger.warning("MoveL: profile 복원 실패")
 
     @staticmethod
     def _trapezoid_s(t: float, t_a: float, t_d: float) -> float:
-        """
-        t ∈ [0, 1] → 변위 비율 s ∈ [0, 1] (사다리꼴 속도 프로파일 적분).
-
-        t_a : 가속 구간 비율
-        t_d : 감속 구간 비율
-        """
-        t_c = 1.0 - t_a - t_d  # 등속 구간 비율
-        # 면적(= 총 변위)이 1이 되도록 peak 속도를 정규화
+        """t ∈ [0,1] → 변위 비율 s ∈ [0,1] (사다리꼴 속도 프로파일 적분)."""
+        t_c = 1.0 - t_a - t_d
         peak = 1.0 / (t_a / 2.0 + t_c + t_d / 2.0)
-
         if t <= t_a:
-            # 가속 구간: 포물선
             return peak * (t ** 2) / (2.0 * t_a)
         elif t <= t_a + t_c:
-            # 등속 구간: 선형
             return peak * (t_a / 2.0 + (t - t_a))
         else:
-            # 감속 구간: 역 포물선
             t_rem = 1.0 - t
             return 1.0 - peak * (t_rem ** 2) / (2.0 * t_d)

@@ -43,6 +43,8 @@ class MotorNode(BaseNode):
         self.create_service(Service.MOTOR_ENABLE,      self._srv_enable)
         self.create_service(Service.MOTOR_REBOOT,      self._srv_reboot)
         self.create_service(Service.MOTOR_SET_PROFILE, self._srv_set_profile)
+        self.create_service(Service.MOTOR_SET_PROFILE_ALL,
+                            self._srv_set_profile_all)
         self.create_service(Service.MOTOR_GET_CONFIG,  self._srv_get_config)
         self.create_service(Service.MOTOR_MOVE_J,      self._srv_move_j)
 
@@ -158,6 +160,30 @@ class MotorNode(BaseNode):
             if motor_id and acceleration is not None:
                 self.driver.set_profile_acceleration(
                     motor_id, int(acceleration))
+            return {"success": True, "message": "ok", "data": {}}
+        except Exception as e:
+            return {"success": False, "message": str(e), "data": {}}
+
+    def _srv_set_profile_all(self, req: dict) -> dict:
+        """
+        지정한 모터 목록의 Profile Velocity / Acceleration 을 일괄 설정.
+        velocity=0, acceleration=0 이면 Dynamixel 내장 프로파일 비활성화(무제한).
+
+        Request data:
+            ids          : list[int]  ← 대상 모터 ID 목록. 생략 시 전체
+            velocity     : int        ← 0 = unlimited
+            acceleration : int        ← 0 = unlimited
+        """
+        data = req.get("data", {})
+        target_ids = data.get("ids", self.driver.motor_ids)
+        velocity = int(data.get("velocity",     0))
+        acceleration = int(data.get("acceleration", 0))
+
+        try:
+            vel_map = {mid: velocity for mid in target_ids}
+            acc_map = {mid: acceleration for mid in target_ids}
+            self.driver.set_profile_accelerations_sync(acc_map)
+            self.driver.set_profile_velocities_sync(vel_map)
             return {"success": True, "message": "ok", "data": {}}
         except Exception as e:
             return {"success": False, "message": str(e), "data": {}}
