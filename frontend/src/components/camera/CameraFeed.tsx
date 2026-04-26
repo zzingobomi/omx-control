@@ -1,4 +1,6 @@
-const CAMERA_URL = "http://localhost:8000/camera/stream";
+import { BASE_URL } from "@/constants";
+
+const CAMERA_URL = `${BASE_URL}/camera/stream`;
 
 interface Props {
   className?: string;

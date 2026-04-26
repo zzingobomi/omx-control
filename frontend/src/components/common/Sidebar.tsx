@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { Gamepad2, Camera, Cpu, Bot, Settings } from "lucide-react";
+import { Gamepad2, Camera, Cpu, Bot, Settings, Box } from "lucide-react";
 import { ConnectionStatus } from "@/components/common/ConnectionStatus";
 import { cn } from "@/lib/utils";
 
@@ -7,6 +7,7 @@ const navItems = [
   { to: "/", label: "Dashboard", icon: Gamepad2 },
   { to: "/motion", label: "Motion", icon: Cpu },
   { to: "/calibration", label: "Calibration", icon: Camera },
+  { to: "/workspace", label: "Workspace3D", icon: Box },
   { to: "/ai", label: "AI", icon: Bot },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
@@ -32,7 +33,7 @@ export function Sidebar() {
                 "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
                 isActive
                   ? "bg-accent text-accent-foreground font-medium"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
               )
             }
           >

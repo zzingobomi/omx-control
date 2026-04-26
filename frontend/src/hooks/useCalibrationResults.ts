@@ -1,0 +1,61 @@
+import { BASE_URL } from "@/constants";
+import { useCallback, useEffect, useState } from "react";
+
+export interface IntrinsicData {
+  camera_matrix: number[][]; // 3x3
+  dist_coeffs: number[][]; // 1xN
+  image_size?: number[]; // [w, h]
+}
+
+export interface HandEyeData {
+  R: number[][]; // 3x3 rotation matrix (camera → base or EEF → camera)
+  t: number[][]; // 3x1 translation [m]
+  available_keys: string[];
+}
+
+export interface CalibrationResults {
+  intrinsic?: IntrinsicData;
+  hand_eye?: HandEyeData;
+  intrinsic_error?: string;
+  hand_eye_error?: string;
+}
+
+export interface CalibrationStatus {
+  intrinsic: boolean;
+  hand_eye: boolean;
+}
+
+export function useCalibrationResults() {
+  const [results, setResults] = useState<CalibrationResults | null>(null);
+  const [status, setStatus] = useState<CalibrationStatus | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchResults = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [resData, resStatus] = await Promise.all([
+        fetch(`${BASE_URL}/calibration/results`),
+        fetch(`${BASE_URL}/calibration/status`),
+      ]);
+      if (!resData.ok) throw new Error(`HTTP ${resData.status}`);
+      const [data, stat] = await Promise.all([
+        resData.json(),
+        resStatus.json(),
+      ]);
+      setResults(data);
+      setStatus(stat);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchResults();
+  }, [fetchResults]);
+
+  return { results, status, loading, error, refetch: fetchResults };
+}

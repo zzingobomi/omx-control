@@ -5,6 +5,7 @@ import { Dashboard } from "@/pages/Dashboard";
 import { Motion } from "@/pages/Motion";
 import { Settings } from "@/pages/Settings";
 import { Calibration } from "@/pages/Calibration";
+import { Workspace3D } from "@/pages/Workspace3D";
 
 function AppContent() {
   useBridge();
@@ -16,8 +17,9 @@ function AppContent() {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/motion" element={<Motion />} />
-          <Route path="/settings" element={<Settings />} />
           <Route path="/calibration" element={<Calibration />} />
+          <Route path="/workspace" element={<Workspace3D />} />
+          <Route path="/settings" element={<Settings />} />
         </Routes>
       </main>
     </div>

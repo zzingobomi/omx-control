@@ -1,8 +1,7 @@
 import ReconnectingWebSocket from "reconnecting-websocket";
 import { WsMsgType } from "@/types/bridge";
 import type { WsIncoming, WsOutgoing } from "@/types/bridge";
-
-const WS_URL = "ws://localhost:8000/ws";
+import { WS_URL } from "@/constants";
 
 type TopicCallback = (data: Record<string, unknown>) => void;
 type ServiceResolver = (res: {

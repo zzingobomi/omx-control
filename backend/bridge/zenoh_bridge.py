@@ -3,14 +3,17 @@ import logging
 import asyncio
 from contextlib import asynccontextmanager
 import time
+from pathlib import Path
 
 import zenoh
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
 
 from core.zenoh_session import ZenohSession
 from core.topic_map import Topic
+from bridge.calibration_router import calibration_router
 
 logger = logging.getLogger(__name__)
 
@@ -46,9 +49,14 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="OMX Bridge", lifespan=lifespan)
 
+ROBOT_DIR = Path(__file__).parents[2] / "robot"
+app.mount("/robot", StaticFiles(directory=str(ROBOT_DIR)), name="robot")
+
+app.include_router(calibration_router)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:5173"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
