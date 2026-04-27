@@ -4,7 +4,7 @@ export type Vec3 = [number, number, number];
 export type Quaternion = [number, number, number, number];
 
 export interface TCPPose {
-  position: Vec3; // [x, y, z] 미터
+  position: Vec3; // [x, y, z] meter
   quaternion: Quaternion;
 }
 
@@ -32,11 +32,10 @@ export interface MoveJRequest {
 
 // ─── MoveL ───────────────────────────────────────────────────
 export interface MoveLRequest {
-  position: Vec3; // 미터 단위 (URDF 기준)
+  position: Vec3; // [x, y, z] meter
   duration: number; // seconds
 }
 
-// ─── 트래젝토리 실행 상태 (omx/motion/state/trajectory 토픽) ──
 export type TrajectoryStatus =
   | "running"
   | "done"

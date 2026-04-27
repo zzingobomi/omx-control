@@ -5,34 +5,10 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Progress } from "@/components/ui/progress";
 import { bridge } from "@/api/bridge";
-import { ServiceKey } from "@/constants/topics";
 import type { MoveJRequest, TrajectoryState } from "@/types/motion";
-
-// arm joints (gripper 제외)
-const ARM_JOINTS = [
-  { id: 1, name: "Joint 1", minDeg: -180, maxDeg: 180 },
-  { id: 2, name: "Joint 2", minDeg: -90, maxDeg: 90 },
-  { id: 3, name: "Joint 3", minDeg: -90, maxDeg: 90 },
-  { id: 4, name: "Joint 4", minDeg: -90, maxDeg: 90 },
-  { id: 5, name: "Joint 5", minDeg: -180, maxDeg: 180 },
-] as const;
-
-const RAW_CENTER = 2048;
-const RAW_MAX = 4095;
-
-function degToRaw(deg: number): number {
-  return Math.round((deg / 360.0) * RAW_MAX + RAW_CENTER);
-}
-
-function rawToDeg(raw: number): number {
-  return Math.round(((raw - RAW_CENTER) / RAW_MAX) * 360.0 * 10) / 10;
-}
-
-interface JointState {
-  id: number;
-  position: number; // raw
-  degree: number;
-}
+import { degToRaw, rawToDeg } from "@/lib/robot/utils";
+import { ARM_JOINTS } from "@/lib/robot/config";
+import { useRobotStore } from "@/store/robotStore";
 
 interface Props {
   trajectoryState: TrajectoryState | null;
@@ -41,43 +17,28 @@ interface Props {
 }
 
 export function MoveJControl({ trajectoryState, onMoveJ, onStop }: Props) {
-  // 현재 관절 상태 (joint state 토픽에서 수신)
-  const [currentJoints, setCurrentJoints] = useState<JointState[]>([]);
+  const joints = useRobotStore((s) => s.joints);
+  const configs = useRobotStore((s) => s.configs);
+  const armIds = new Set(ARM_JOINTS.map((j) => j.id));
+  const currentJoints = joints.filter((j) => armIds.has(j.id));
 
-  // 목표 각도 (degrees) — 초기값은 0도
+  // UI 설정
   const [targetDeg, setTargetDeg] = useState<Record<number, number>>(
-    Object.fromEntries(ARM_JOINTS.map((j) => [j.id, 0]))
+    Object.fromEntries(ARM_JOINTS.map((j) => [j.id, 0])),
   );
-
   const [duration, setDuration] = useState(3.0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // MOTOR_STATE_JOINT 구독 → 현재 관절 각도 반영
-  useEffect(() => {
-    const unsub = bridge.subscribe("omx/motor/state/joint", (data: unknown) => {
-      const d = data as {
-        joints: Array<{ id: number; position: number; degree: number }>;
-      };
-      const armJoints = d.joints.filter((j) => j.id >= 1 && j.id <= 5);
-      setCurrentJoints(
-        armJoints.map((j) => ({
-          id: j.id,
-          position: j.position,
-          degree: j.degree,
-        }))
-      );
-    });
-    return () => unsub();
-  }, []);
-
-  // 현재 관절 각도를 목표값으로 복사
-  const copyCurrentAngles = useCallback(() => {
+  const applyCurrentJointAngles = useCallback(() => {
     if (currentJoints.length === 0) return;
+
     const next: Record<number, number> = { ...targetDeg };
+
     currentJoints.forEach((j) => {
       next[j.id] = Math.round(j.degree * 10) / 10;
     });
+
     setTargetDeg(next);
   }, [currentJoints, targetDeg]);
 
@@ -95,12 +56,16 @@ export function MoveJControl({ trajectoryState, onMoveJ, onStop }: Props) {
   const handleExecute = async () => {
     setLoading(true);
     setError(null);
+
     const joints = ARM_JOINTS.map((j) => ({
       id: j.id,
       position: degToRaw(targetDeg[j.id] ?? 0),
     }));
+
     const ok = await onMoveJ({ joints, duration });
+
     if (!ok) setError("MoveJ 실패");
+
     setLoading(false);
   };
 
@@ -114,34 +79,43 @@ export function MoveJControl({ trajectoryState, onMoveJ, onStop }: Props) {
         {ARM_JOINTS.map((j) => {
           const current = currentJoints.find((c) => c.id === j.id);
           const target = targetDeg[j.id] ?? 0;
-          const clipped = Math.max(j.minDeg, Math.min(j.maxDeg, target));
+
+          const hw = configs.find((c) => c.id === j.id);
+
+          const minDeg = rawToDeg(hw?.limit.min ?? 0);
+          const maxDeg = rawToDeg(hw?.limit.max ?? 4095);
+
+          const clipped = Math.max(minDeg, Math.min(maxDeg, target));
+
           return (
             <div
               key={j.id}
               className="grid grid-cols-[80px_1fr_72px] items-center gap-2"
             >
               <div>
-                <Label className="text-xs font-medium">{j.name}</Label>
+                <Label className="text-xs font-medium">{j.label}</Label>
                 {current && (
                   <p className="text-[10px] text-muted-foreground">
                     현재 {current.degree.toFixed(1)}°
                   </p>
                 )}
               </div>
+
               <Slider
-                min={j.minDeg}
-                max={j.maxDeg}
+                min={minDeg}
+                max={maxDeg}
                 step={0.5}
                 value={[clipped]}
                 onValueChange={(v) => handleSliderChange(j.id, v)}
                 className="w-full"
               />
+
               <div className="flex items-center gap-0.5">
                 <Input
                   type="number"
                   value={target}
-                  min={j.minDeg}
-                  max={j.maxDeg}
+                  min={minDeg}
+                  max={maxDeg}
                   step={0.5}
                   onChange={(e) => handleDegChange(j.id, e.target.value)}
                   className="h-7 w-full px-1.5 text-xs text-right"
@@ -194,11 +168,12 @@ export function MoveJControl({ trajectoryState, onMoveJ, onStop }: Props) {
           variant="outline"
           size="sm"
           className="flex-1"
-          onClick={copyCurrentAngles}
+          onClick={applyCurrentJointAngles}
           disabled={currentJoints.length === 0}
         >
-          현재 복사
+          현재 자세 불러오기
         </Button>
+
         <Button
           size="sm"
           className="flex-1"
@@ -207,6 +182,7 @@ export function MoveJControl({ trajectoryState, onMoveJ, onStop }: Props) {
         >
           {loading ? "전송 중…" : "실행"}
         </Button>
+
         <Button
           variant="destructive"
           size="sm"

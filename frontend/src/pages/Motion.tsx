@@ -28,9 +28,7 @@ export function Motion() {
           <div className="w-[480px] rounded-lg border bg-card p-4 flex flex-col gap-3">
             <div>
               <h2 className="text-sm font-semibold">MoveJ</h2>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                관절 공간 이동 — Dynamixel 내장 Trapezoidal Profile 사용
-              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">MoveJ</p>
             </div>
             <MoveJControl
               trajectoryState={motion.trajectoryState}
@@ -48,9 +46,7 @@ export function Motion() {
           <div className="w-[480px] rounded-lg border bg-card p-4 flex flex-col gap-3">
             <div>
               <h2 className="text-sm font-semibold">MoveL</h2>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                TCP 직선 보간 — 20 Hz waypoint / Trapezoidal velocity profile
-              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">MoveL</p>
             </div>
             <MoveLControl
               tcpPose={motion.tcpPose}

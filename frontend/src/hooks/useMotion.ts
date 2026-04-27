@@ -1,32 +1,31 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback } from "react";
 import { bridge } from "@/api/bridge";
-import { ServiceKey, Topic } from "@/constants/topics";
+import { ServiceKey } from "@/constants/topics";
 import type {
   TCPPose,
   MoveTCPRequest,
   OrbitRotateRequest,
   MoveJRequest,
   MoveLRequest,
-  TrajectoryState,
 } from "@/types/motion";
+import { useMotionStore } from "@/store/motionStore";
 
 interface UseMotionReturn {
-  // TCP 상태
   tcpPose: TCPPose | null;
-  // Orbit 상태
   orbitActive: boolean;
-  // 트래젝토리 실행 상태
-  trajectoryState: TrajectoryState | null;
-  // 공통
+  trajectoryState: any;
   loading: boolean;
   error: string | null;
-  // Move TCP (step 방식)
+
+  // TCP
   getTCP: () => Promise<TCPPose | null>;
   moveTCP: (req: MoveTCPRequest) => Promise<boolean>;
+
   // Orbit
   orbitSet: () => Promise<boolean>;
   orbitRotate: (req: OrbitRotateRequest) => Promise<boolean>;
   orbitClear: () => Promise<void>;
+
   // MoveJ / MoveL
   moveJ: (req: MoveJRequest) => Promise<boolean>;
   moveL: (req: MoveLRequest) => Promise<boolean>;
@@ -34,28 +33,13 @@ interface UseMotionReturn {
 }
 
 export function useMotion(): UseMotionReturn {
-  const [tcpPose, setTcpPose] = useState<TCPPose | null>(null);
-  const [orbitActive, setOrbitActive] = useState(false);
-  const [trajectoryState, setTrajectoryState] =
-    useState<TrajectoryState | null>(null);
+  const { tcpPose, orbitActive, trajectoryState, setTcpPose, setOrbitActive } =
+    useMotionStore();
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // omx/motion/state/trajectory 토픽 구독
-  const unsubRef = useRef<(() => void) | null>(null);
-  useEffect(() => {
-    unsubRef.current = bridge.subscribe(
-      Topic.MOTION_STATE_TRAJ,
-      (data: unknown) => {
-        setTrajectoryState(data as TrajectoryState);
-      }
-    );
-    return () => {
-      unsubRef.current?.();
-    };
-  }, []);
-
-  // ─── Move TCP ──────────────────────────────────────────────
+  // ─── TCP ──────────────────────────────────────────────
 
   const getTCP = useCallback(async (): Promise<TCPPose | null> => {
     const res = await bridge.callService(ServiceKey.MOTION_GET_TCP, {});
@@ -67,13 +51,13 @@ export function useMotion(): UseMotionReturn {
     }
     setError(res.message);
     return null;
-  }, []);
+  }, [setTcpPose]);
 
-  const moveTCP = useCallback(async (req: MoveTCPRequest): Promise<boolean> => {
+  const moveTCP = useCallback(async (req: MoveTCPRequest) => {
     setLoading(true);
     const res = await bridge.callService(
       ServiceKey.MOTION_MOVE_TCP,
-      req as unknown as Record<string, unknown>
+      req as unknown as Record<string, unknown>,
     );
     setLoading(false);
     if (!res.success) setError(res.message);
@@ -81,12 +65,13 @@ export function useMotion(): UseMotionReturn {
     return res.success;
   }, []);
 
-  // ─── Orbit ─────────────────────────────────────────────────
+  // ─── Orbit ─────────────────────────────────────────────
 
-  const orbitSet = useCallback(async (): Promise<boolean> => {
+  const orbitSet = useCallback(async () => {
     setLoading(true);
     const res = await bridge.callService(ServiceKey.MOTION_ORBIT_SET, {});
     setLoading(false);
+
     if (res.success) {
       setOrbitActive(true);
       setTcpPose(res.data as unknown as TCPPose);
@@ -94,59 +79,63 @@ export function useMotion(): UseMotionReturn {
     } else {
       setError(res.message);
     }
+
+    return res.success;
+  }, [setOrbitActive, setTcpPose]);
+
+  const orbitRotate = useCallback(async (req: OrbitRotateRequest) => {
+    const res = await bridge.callService(
+      ServiceKey.MOTION_ORBIT_ROTATE,
+      req as unknown as Record<string, unknown>,
+    );
+    if (!res.success) setError(res.message);
+    else setError(null);
     return res.success;
   }, []);
 
-  const orbitRotate = useCallback(
-    async (req: OrbitRotateRequest): Promise<boolean> => {
-      const res = await bridge.callService(
-        ServiceKey.MOTION_ORBIT_ROTATE,
-        req as unknown as Record<string, unknown>
-      );
-      if (!res.success) setError(res.message);
-      else setError(null);
-      return res.success;
-    },
-    []
-  );
-
-  const orbitClear = useCallback(async (): Promise<void> => {
+  const orbitClear = useCallback(async () => {
     await bridge.callService(ServiceKey.MOTION_ORBIT_CLEAR, {});
     setOrbitActive(false);
     setError(null);
-  }, []);
+  }, [setOrbitActive]);
 
-  // ─── MoveJ ─────────────────────────────────────────────────
+  // ─── MoveJ ─────────────────────────────────────────────
 
-  const moveJ = useCallback(async (req: MoveJRequest): Promise<boolean> => {
+  const moveJ = useCallback(async (req: MoveJRequest) => {
     setLoading(true);
     setError(null);
+
     const res = await bridge.callService(
       ServiceKey.MOTOR_MOVE_J,
-      req as unknown as Record<string, unknown>
+      req as unknown as Record<string, unknown>,
     );
+
     setLoading(false);
     if (!res.success) setError(res.message);
+
     return res.success;
   }, []);
 
-  // ─── MoveL ─────────────────────────────────────────────────
+  // ─── MoveL ─────────────────────────────────────────────
 
-  const moveL = useCallback(async (req: MoveLRequest): Promise<boolean> => {
+  const moveL = useCallback(async (req: MoveLRequest) => {
     setLoading(true);
     setError(null);
+
     const res = await bridge.callService(
       ServiceKey.MOTION_MOVE_L,
-      req as unknown as Record<string, unknown>
+      req as unknown as Record<string, unknown>,
     );
+
     setLoading(false);
     if (!res.success) setError(res.message);
+
     return res.success;
   }, []);
 
-  // ─── Stop ──────────────────────────────────────────────────
+  // ─── Stop ──────────────────────────────────────────────
 
-  const stopMotion = useCallback(async (): Promise<void> => {
+  const stopMotion = useCallback(async () => {
     await bridge.callService(ServiceKey.MOTION_STOP, {});
     setError(null);
   }, []);

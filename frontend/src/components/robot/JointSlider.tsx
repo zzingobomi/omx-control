@@ -1,6 +1,6 @@
 import * as SliderPrimitive from "@radix-ui/react-slider";
 import type { Joint } from "@/types/motor";
-import { rawToDeg } from "@/lib/utils";
+import { rawToDeg } from "@/lib/robot/utils";
 
 interface Props {
   joint: Joint;

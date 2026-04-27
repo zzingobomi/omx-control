@@ -2,9 +2,8 @@ import { useCallback, useEffect, useRef } from "react";
 import * as THREE from "three";
 import URDFLoader from "urdf-loader";
 import { BASE_URL } from "@/constants";
-
-const ARM_JOINT_NAMES = ["joint1", "joint2", "joint3", "joint4", "joint5"];
-const TCP_LINK_NAME = "end_effector_link";
+import { TCP_LINK_NAME } from "@/lib/robot/config";
+import { ARM_JOINTS } from "@/lib/robot/config";
 
 interface URDFRobotProps {
   jointAngles: number[];
@@ -52,7 +51,7 @@ export function URDFRobot({ jointAngles, onTCPMatrix }: URDFRobotProps) {
         groupRef.current?.add(robot);
       },
       undefined,
-      (err: unknown) => console.error("[URDFRobot] load error:", err)
+      (err: unknown) => console.error("[URDFRobot] load error:", err),
     );
 
     return () => {
@@ -68,10 +67,10 @@ export function URDFRobot({ jointAngles, onTCPMatrix }: URDFRobotProps) {
     const robot = robotRef.current;
     if (!robot) return;
 
-    ARM_JOINT_NAMES.forEach((name, i) => {
+    ARM_JOINTS.forEach((joint, i) => {
       const angle = jointAngles[i];
-      if (angle !== undefined && robot.joints?.[name]) {
-        robot.setJointValue(name, angle);
+      if (angle !== undefined && robot.joints?.[joint.name]) {
+        robot.setJointValue(joint.name, angle);
       }
     });
 

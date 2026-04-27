@@ -4,21 +4,68 @@ import math
 import cv2
 import numpy as np
 import zenoh
+
 from core.topic_map import Topic, Service
 
 PUBLISH_HZ = 20
-MOTOR_IDS = [(1, "joint1"), (2, "joint2"), (3, "joint3"),
-             (4, "joint4"), (5, "joint5"), (6, "gripper")]
+
+# ─────────────────────────────────────────────
+# Motor
+# ─────────────────────────────────────────────
+
+MOTOR_IDS = [
+    (1, "joint1"),
+    (2, "joint2"),
+    (3, "joint3"),
+    (4, "joint4"),
+    (5, "joint5"),
+    (6, "gripper"),
+]
 
 cmd_positions = {mid: 2048 for mid, _ in MOTOR_IDS}
 actual_positions = {mid: 2048.0 for mid, _ in MOTOR_IDS}
 FOLLOW_SPEED = 0.05
 
-LOG_LEVELS = ["info", "warning", "error"]
-MOCK_NODES = ["motor_node", "camera_node"]
+
+# ─────────────────────────────────────────────
+# Motion (TCPPose: tuple 기반)
+# ─────────────────────────────────────────────
+
+current_tcp = {
+    "position": (0.3, 0.0, 0.2),  # Position3
+    "quaternion": (0.0, 0.0, 0.0, 1.0),  # Quaternion
+}
+
+target_tcp = {
+    "position": (0.3, 0.0, 0.2),
+    "quaternion": (0.0, 0.0, 0.0, 1.0),
+}
+
+TCP_FOLLOW_SPEED = 0.05
 
 
-# ─── 가짜 프레임 ─────────────────────────────────────────────
+def lerp(a, b, t):
+    return a + (b - a) * t
+
+
+def lerp_tuple(a, b, t):
+    return tuple(lerp(ai, bi, t) for ai, bi in zip(a, b))
+
+
+def update_tcp():
+    global current_tcp
+    current_tcp["position"] = lerp_tuple(
+        current_tcp["position"],
+        target_tcp["position"],
+        TCP_FOLLOW_SPEED,
+    )
+    # quaternion은 mock이라 그대로 둠
+
+
+# ─────────────────────────────────────────────
+# Fake Camera
+# ─────────────────────────────────────────────
+
 
 def make_fake_frame(t: float) -> bytes:
     frame = np.zeros((720, 1280, 3), dtype=np.uint8)
@@ -27,131 +74,246 @@ def make_fake_frame(t: float) -> bytes:
         int(40 + 20 * math.sin(t + 2)),
         int(40 + 20 * math.sin(t + 4)),
     )
-    cv2.putText(frame, "MOCK CAMERA",   (20,  50),
-                cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 255), 2)
-    cv2.putText(frame, f"t={t:.2f}",    (20, 100),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (180, 180, 180), 1)
+
+    cv2.putText(
+        frame,
+        "MOCK CAMERA",
+        (20, 50),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        1.2,
+        (255, 255, 255),
+        2,
+    )
+    cv2.putText(
+        frame,
+        f"t={t:.2f}",
+        (20, 100),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.8,
+        (180, 180, 180),
+        1,
+    )
+
     _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
     return buf.tobytes()
 
 
-# ─── Zenoh 핸들러 ────────────────────────────────────────────
+# ─────────────────────────────────────────────
+# Motor Handlers
+# ─────────────────────────────────────────────
+
 
 def on_cmd_joint(sample):
     data = json.loads(sample.payload.to_bytes())
+
     for j in data.get("joints", []):
         if "id" in j and "position" in j:
             cmd_positions[j["id"]] = j["position"]
-            print(f"[mock] CMD 수신: joint{j['id']} → {j['position']}")
+            print(f"[mock] CMD joint{j['id']} → {j['position']}")
 
 
 def on_enable(query):
     data = json.loads(query.payload.to_bytes()) if query.payload else {}
     enable = data.get("data", {}).get("enable", True)
-    print(f"[mock] MOTOR_ENABLE: enable={enable}")
+
+    print(f"[mock] MOTOR_ENABLE: {enable}")
+
     query.reply(
-        query.key_expr,
-        json.dumps({"success": True, "message": "ok",
-                   "data": {"enable": enable}})
+        query.key_expr, json.dumps({"success": True, "data": {"enable": enable}})
     )
 
 
 def on_get_config(query):
     configs = [
-        {"id": mid, "name": name, "model": "XL430-W250", "mode": "position",
-         "home": 2048, "limit": {"min": 0, "max": 4095}}
+        {
+            "id": mid,
+            "name": name,
+            "model": "XL430-W250",
+            "mode": "position",
+            "home": 2048,
+            "limit": {"min": 0, "max": 4095},
+        }
         for mid, name in MOTOR_IDS
     ]
+
     query.reply(
-        query.key_expr,
-        json.dumps({"success": True, "message": "ok",
-                   "data": {"motors": configs}})
+        query.key_expr, json.dumps({"success": True, "data": {"motors": configs}})
     )
 
 
-# ─── 메인 ────────────────────────────────────────────────────
+# ─────────────────────────────────────────────
+# Motion Handlers (🔥 tuple 기반)
+# ─────────────────────────────────────────────
+
+
+def on_get_tcp(query):
+    query.reply(
+        query.key_expr,
+        json.dumps(
+            {
+                "success": True,
+                "data": {
+                    "position": list(current_tcp["position"]),
+                    "quaternion": list(current_tcp["quaternion"]),
+                },
+            }
+        ),
+    )
+
+
+def on_move_tcp(query):
+    global target_tcp
+
+    data = json.loads(query.payload.to_bytes())
+    tcp = data.get("data", {})
+
+    if "position" in tcp:
+        p = tcp["position"]
+        target_tcp["position"] = (
+            float(p[0]),
+            float(p[1]),
+            float(p[2]),
+        )
+
+    if "quaternion" in tcp:
+        q = tcp["quaternion"]
+        target_tcp["quaternion"] = (
+            float(q[0]),
+            float(q[1]),
+            float(q[2]),
+            float(q[3]),
+        )
+
+    print(f"[mock] MOVE_TCP → {target_tcp}")
+
+    query.reply(query.key_expr, json.dumps({"success": True, "message": "moving"}))
+
+
+def on_move_l(query):
+    print("[mock] MOVE_L")
+    return on_move_tcp(query)
+
+
+def on_stop(query):
+    global target_tcp
+
+    target_tcp = {
+        "position": current_tcp["position"],
+        "quaternion": current_tcp["quaternion"],
+    }
+
+    print("[mock] STOP")
+
+    query.reply(query.key_expr, json.dumps({"success": True}))
+
+
+# ─────────────────────────────────────────────
+# Calibration Handlers
+# ─────────────────────────────────────────────
+
+
+def on_calib_capture(query):
+    print("[mock] CAPTURE")
+
+    query.reply(
+        query.key_expr,
+        json.dumps({"success": True, "data": {"index": int(time.time())}}),
+    )
+
+
+def on_handeye_start(query):
+    print("[mock] HANDEYE START")
+
+    query.reply(query.key_expr, json.dumps({"success": True}))
+
+
+def on_handeye_save(query):
+    print("[mock] HANDEYE SAVE")
+
+    query.reply(
+        query.key_expr,
+        json.dumps(
+            {
+                "success": True,
+                "data": {
+                    "R": [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+                    "t": [0.1, 0.0, 0.2],
+                },
+            }
+        ),
+    )
+
+
+# ─────────────────────────────────────────────
+# Main
+# ─────────────────────────────────────────────
+
 
 def main():
     session = zenoh.open(zenoh.Config())
 
-    pub_state = session.declare_publisher(Topic.MOTOR_STATE_JOINT)
-    pub_heartbeat = session.declare_publisher(Topic.SYSTEM_HEARTBEAT)
-    pub_log = session.declare_publisher(Topic.SYSTEM_LOG)
-    pub_camera_status = session.declare_publisher(Topic.CAMERA_STATE_STATUS)
+    pub_motor = session.declare_publisher(Topic.MOTOR_STATE_JOINT)
+    pub_motion = session.declare_publisher(Topic.MOTION_STATE_TRAJ)
 
     session.declare_subscriber(Topic.MOTOR_CMD_JOINT, on_cmd_joint)
-    session.declare_queryable(Service.MOTOR_ENABLE,    on_enable)
+
+    session.declare_queryable(Service.MOTOR_ENABLE, on_enable)
     session.declare_queryable(Service.MOTOR_GET_CONFIG, on_get_config)
 
-    print("[mock] 시작 — Ctrl+C로 종료")
+    session.declare_queryable(Service.MOTION_GET_TCP, on_get_tcp)
+    session.declare_queryable(Service.MOTION_MOVE_TCP, on_move_tcp)
+    session.declare_queryable(Service.MOTION_MOVE_L, on_move_l)
+    session.declare_queryable(Service.MOTION_STOP, on_stop)
+
+    session.declare_queryable(Service.CALIB_CAPTURE, on_calib_capture)
+    session.declare_queryable(Service.CALIB_HANDEYE_START, on_handeye_start)
+    session.declare_queryable(Service.CALIB_HANDEYE_SAVE, on_handeye_save)
+
+    print("[mock] started")
 
     interval = 1.0 / PUBLISH_HZ
-    last_heartbeat = 0.0
-    last_log = 0.0
-    log_index = 0
-    camera_status_sent = False
 
     try:
         while True:
             t = time.time()
 
-            # ─── 모터 상태 (20Hz) ────────────────────────────
+            # ─── Motor State ─────────────────────
             for mid, _ in MOTOR_IDS:
-                actual_positions[mid] += (cmd_positions[mid] -
-                                          actual_positions[mid]) * FOLLOW_SPEED
+                actual_positions[mid] += (
+                    cmd_positions[mid] - actual_positions[mid]
+                ) * FOLLOW_SPEED
 
             joints = [
                 {
-                    "id": mid, "name": name,
+                    "id": mid,
+                    "name": name,
                     "position": round(actual_positions[mid]),
-                    "degree":   round((actual_positions[mid] / 4095) * 360, 2),
-                    "velocity": 0.0, "torque": 0.0,
+                    "degree": round((actual_positions[mid] / 4095) * 360, 2),
                 }
                 for mid, name in MOTOR_IDS
             ]
-            pub_state.put(json.dumps({"timestamp": t, "joints": joints}))
 
-            # ─── 카메라 프레임 (20Hz, 실제는 30fps지만 mock은 20으로) ──
-            # session.put(Topic.CAMERA_STREAM_RAW, make_fake_frame(t))
+            pub_motor.put(json.dumps({"timestamp": t, "joints": joints}))
 
-            # ─── 카메라 상태 (최초 한 번) ────────────────────
-            # if not camera_status_sent:
-            #     pub_camera_status.put(json.dumps({
-            #         "timestamp": t,
-            #         "connected": True,
-            #         "width":     1280,
-            #         "height":    720,
-            #         "fps":       30,
-            #     }))
-            #     camera_status_sent = True
+            # ─── Motion State ────────────────────
+            update_tcp()
 
-            # ─── Heartbeat (1Hz) ─────────────────────────────
-            # if t - last_heartbeat >= 1.0:
-            #     for node in MOCK_NODES:
-            #         pub_heartbeat.put(json.dumps({
-            #             "node":      node,
-            #             "status":    "ok",
-            #             "timestamp": t,
-            #         }))
-            #     last_heartbeat = t
-
-            # ─── 로그 (3초마다) ──────────────────────────────
-            # if t - last_log >= 3.0:
-            #     level = LOG_LEVELS[log_index % len(LOG_LEVELS)]
-            #     node = MOCK_NODES[log_index % len(MOCK_NODES)]
-            #     pub_log.put(json.dumps({
-            #         "timestamp": t,
-            #         "node":      node,
-            #         "level":     level,
-            #         "message":   f"[mock] 테스트 로그 #{log_index} ({level})",
-            #     }))
-            #     log_index += 1
-            #     last_log = t
+            pub_motion.put(
+                json.dumps(
+                    {
+                        "timestamp": t,
+                        "tcp": {
+                            "position": list(current_tcp["position"]),
+                            "quaternion": list(current_tcp["quaternion"]),
+                        },
+                    }
+                )
+            )
 
             time.sleep(interval)
 
     except KeyboardInterrupt:
-        print("\n[mock] 종료")
+        print("\n[mock] stopped")
     finally:
         session.close()
 

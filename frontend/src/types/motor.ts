@@ -25,14 +25,3 @@ export interface MotorConfig {
   home: number;
   limit: { min: number; max: number };
 }
-
-export const JOINT_NAMES = [
-  "joint1",
-  "joint2",
-  "joint3",
-  "joint4",
-  "joint5",
-  "gripper",
-] as const;
-
-export type JointName = (typeof JOINT_NAMES)[number];

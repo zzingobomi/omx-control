@@ -6,6 +6,8 @@ import type { JointState, MotorConfig } from "@/types/motor";
 import { useRobotStore } from "@/store/robotStore";
 import type { CameraStatus } from "@/types/camera";
 import { useCameraStore } from "@/store/cameraStore";
+import { useMotionStore } from "@/store/motionStore";
+import type { TrajectoryState } from "@/types/motion";
 
 export function useBridge() {
   const setBridgeConnected = useSystemStore((s) => s.setBridgeConnected);
@@ -15,6 +17,7 @@ export function useBridge() {
   const setConfigs = useRobotStore((s) => s.setConfigs);
   const setTorque = useRobotStore((s) => s.setTorque);
   const setStatus = useCameraStore((s) => s.setStatus);
+  const setTrajectoryState = useMotionStore((s) => s.setTrajectoryState);
 
   useEffect(() => {
     // Bridge 연결
@@ -58,7 +61,7 @@ export function useBridge() {
           node: string;
           level: string;
           message: string;
-        }
+        },
       );
     });
 
@@ -67,14 +70,20 @@ export function useBridge() {
       Topic.CAMERA_STATE_STATUS,
       (data) => {
         setStatus(data as unknown as CameraStatus);
-      }
+      },
     );
+
+    // Trajectory 상태 구독
+    const unsubTraj = bridge.subscribe(Topic.MOTION_STATE_TRAJ, (data) => {
+      setTrajectoryState(data as unknown as TrajectoryState);
+    });
 
     return () => {
       unsubJoint();
       unsubHeartbeat();
       unsubLog();
       unsubCameraStatus();
+      unsubTraj();
       bridge.disconnect();
     };
   }, [
@@ -85,5 +94,6 @@ export function useBridge() {
     setConfigs,
     setStatus,
     setTorque,
+    setTrajectoryState,
   ]);
 }

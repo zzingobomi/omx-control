@@ -1,5 +1,5 @@
 import { useRobotStore } from "@/store/robotStore";
-import { rawToDeg } from "@/lib/utils";
+import { rawToDeg } from "@/lib/robot/utils";
 
 export function RobotStatus() {
   const joints = useRobotStore((s) => s.joints);
