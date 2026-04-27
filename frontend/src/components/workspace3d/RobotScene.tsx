@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { CalibrationResults } from "@/hooks/useCalibrationResults";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Grid, Environment } from "@react-three/drei";
@@ -7,7 +7,7 @@ import { URDFRobot } from "./URDFRobot";
 import { AxisFrame } from "./AxisFrame";
 import { CameraFrustum } from "./CameraFrustum";
 
-interface SceneOptions {
+export interface SceneOptions {
   showRobot: boolean;
   showBaseFrame: boolean;
   showTCPFrame: boolean;
@@ -19,6 +19,8 @@ interface RobotSceneProps {
   jointAngles: number[];
   calibration: CalibrationResults | null;
   options: SceneOptions;
+  linkVisibility?: Record<string, boolean>;
+  onLinksLoaded?: (names: string[]) => void;
   onTCPMatrix?: (m: THREE.Matrix4 | null) => void;
 }
 
@@ -37,26 +39,32 @@ function SceneContent({
   jointAngles,
   calibration,
   options,
+  linkVisibility,
+  onLinksLoaded,
   onTCPMatrix,
 }: RobotSceneProps) {
   const [tcpMatrix, setTcpMatrix] = useState<THREE.Matrix4 | null>(null);
 
   const handleTCPMatrix = useCallback(
     (m: THREE.Matrix4) => {
-      setTcpMatrix(m);
+      setTcpMatrix(m.clone());
       onTCPMatrix?.(m);
     },
     [onTCPMatrix]
   );
 
-  const cameraMatrix =
-    calibration?.hand_eye?.R && calibration?.hand_eye?.t
-      ? buildMatrix4(calibration.hand_eye.R, calibration.hand_eye.t)
-      : null;
+  const handEyeMatrix = useMemo(() => {
+    if (!calibration?.hand_eye?.R || !calibration?.hand_eye?.t) return null;
+    return buildMatrix4(calibration.hand_eye.R, calibration.hand_eye.t);
+  }, [calibration]);
+
+  const cameraMatrix = useMemo(() => {
+    if (!tcpMatrix || !handEyeMatrix) return null;
+    return tcpMatrix.clone().multiply(handEyeMatrix);
+  }, [tcpMatrix, handEyeMatrix]);
 
   return (
     <>
-      {/* Lighting */}
       <ambientLight intensity={0.4} color="#b0c8e0" />
       <directionalLight
         position={[0.5, 1, 0.5]}
@@ -70,11 +78,8 @@ function SceneContent({
         intensity={0.3}
         color="#6699bb"
       />
-
-      {/* Environment for reflections */}
       <Environment preset="city" />
 
-      {/* Ground Grid */}
       {options.showGrid && (
         <Grid
           args={[0.6, 0.6]}
@@ -88,21 +93,21 @@ function SceneContent({
           fadeStrength={1}
           followCamera={false}
           position={[0, 0, 0]}
-          rotation={[Math.PI / 2, 0, 0]} // lie flat on XY plane (Z up)
         />
       )}
 
-      {/* World / Base frame at origin */}
       {options.showBaseFrame && (
         <AxisFrame size={0.06} label="BASE" labelColor="#ffffff" />
       )}
 
-      {/* Robot model with live joint angles */}
-      {options.showRobot && (
-        <URDFRobot jointAngles={jointAngles} onTCPMatrix={handleTCPMatrix} />
-      )}
+      <URDFRobot
+        jointAngles={jointAngles}
+        onTCPMatrix={handleTCPMatrix}
+        onLinksLoaded={onLinksLoaded}
+        linkVisibility={linkVisibility}
+        visible={options.showRobot}
+      />
 
-      {/* TCP frame — follows end-effector matrix from urdf-loader */}
       {options.showTCPFrame && tcpMatrix && (
         <AxisFrame
           matrix={tcpMatrix}
@@ -112,9 +117,8 @@ function SceneContent({
         />
       )}
 
-      {/* Camera frame — from hand-eye calibration */}
       {options.showCameraFrame && cameraMatrix && (
-        <group>
+        <>
           <AxisFrame
             matrix={cameraMatrix}
             size={0.04}
@@ -122,7 +126,6 @@ function SceneContent({
             labelColor="#00e5ff"
           />
           {calibration?.intrinsic && (
-            // Position frustum at the camera frame origin
             <group
               position={new THREE.Vector3()
                 .setFromMatrixPosition(cameraMatrix)
@@ -134,10 +137,9 @@ function SceneContent({
               <CameraFrustum intrinsic={calibration.intrinsic} depth={0.12} />
             </group>
           )}
-        </group>
+        </>
       )}
 
-      {/* Camera controls */}
       <OrbitControls
         makeDefault
         enableDamping
@@ -154,8 +156,11 @@ export function RobotScene(props: RobotSceneProps) {
   return (
     <Canvas
       camera={{ position: [0.4, 0.35, 0.4], fov: 45, near: 0.001, far: 10 }}
-      shadows
       gl={{ antialias: true, alpha: false }}
+      onCreated={({ gl }) => {
+        gl.shadowMap.enabled = true;
+        gl.shadowMap.type = THREE.PCFShadowMap;
+      }}
       style={{ background: "#080c12" }}
     >
       <SceneContent {...props} />

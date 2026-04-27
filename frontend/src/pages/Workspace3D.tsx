@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { RobotScene } from "@/components/workspace3d/RobotScene";
 import { useCalibrationResults } from "@/hooks/useCalibrationResults";
 import { useRobotStore } from "@/store/robotStore";
-import { Loader2, RefreshCw } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2, RefreshCw } from "lucide-react";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { ToggleRow } from "@/components/common/ToggleRow";
 import { MatrixTable } from "@/components/common/MatrixTable";
@@ -26,12 +26,9 @@ export function Workspace3D() {
       .filter((j) => j.id >= 1 && j.id <= 5)
       .sort((a, b) => a.id - b.id)
       .map((j) => {
-        if (j.degree !== undefined) {
-          return (j.degree * Math.PI) / 180;
-        }
-        if (j.position !== undefined) {
+        if (j.degree !== undefined) return (j.degree * Math.PI) / 180;
+        if (j.position !== undefined)
           return ((j.position - 2048) / 4095) * 2 * Math.PI;
-        }
         return 0;
       });
   }, [joints]);
@@ -54,6 +51,31 @@ export function Workspace3D() {
     setOptions((prev) => ({ ...prev, [key]: !prev[key] }));
   }, []);
 
+  // ── 링크별 visibility ──────────────────────────────────────────────────
+  const [linkNames, setLinkNames] = useState<string[]>([]);
+  const [linkVisibility, setLinkVisibility] = useState<Record<string, boolean>>(
+    {}
+  );
+  const [linksExpanded, setLinksExpanded] = useState(false);
+
+  const handleLinksLoaded = useCallback((names: string[]) => {
+    setLinkNames(names);
+    setLinkVisibility(Object.fromEntries(names.map((n) => [n, true])));
+  }, []);
+
+  const toggleLink = useCallback((name: string) => {
+    setLinkVisibility((prev) => ({ ...prev, [name]: !prev[name] }));
+  }, []);
+
+  const allLinksVisible =
+    linkNames.length > 0 && linkNames.every((n) => linkVisibility[n] !== false);
+  const toggleAllLinks = useCallback(() => {
+    setLinkVisibility(
+      Object.fromEntries(linkNames.map((n) => [n, !allLinksVisible]))
+    );
+  }, [linkNames, allLinksVisible]);
+  // ───────────────────────────────────────────────────────────────────────
+
   const tcpPos = tcpMatrix
     ? new THREE.Vector3().setFromMatrixPosition(tcpMatrix)
     : null;
@@ -69,6 +91,8 @@ export function Workspace3D() {
           jointAngles={jointAngles}
           calibration={results}
           options={options}
+          linkVisibility={linkVisibility}
+          onLinksLoaded={handleLinksLoaded}
           onTCPMatrix={handleTCPMatrix}
         />
 
@@ -168,6 +192,51 @@ export function Workspace3D() {
           />
         </div>
 
+        {/* Robot Links */}
+        <div className="px-4 py-3 border-b border-zinc-800">
+          <div className="flex items-center justify-between mb-2">
+            <button
+              onClick={() => setLinksExpanded((p) => !p)}
+              className="flex items-center gap-1 text-[10px] uppercase tracking-widest text-zinc-500 hover:text-zinc-300 transition-colors"
+            >
+              {linksExpanded ? (
+                <ChevronDown className="w-3 h-3" />
+              ) : (
+                <ChevronRight className="w-3 h-3" />
+              )}
+              Robot Links
+            </button>
+            {linkNames.length > 0 && (
+              <button
+                onClick={toggleAllLinks}
+                className="text-[10px] font-mono text-zinc-500 hover:text-zinc-300 transition-colors"
+              >
+                {allLinksVisible ? "hide all" : "show all"}
+              </button>
+            )}
+          </div>
+
+          {linksExpanded && (
+            <div className="space-y-1">
+              {linkNames.length === 0 ? (
+                <p className="text-[11px] text-zinc-600 font-mono pl-3">
+                  Loading…
+                </p>
+              ) : (
+                linkNames.map((name) => (
+                  <ToggleRow
+                    key={name}
+                    label={name}
+                    checked={linkVisibility[name] !== false}
+                    onChange={() => toggleLink(name)}
+                    accentColor="bg-blue-400"
+                  />
+                ))
+              )}
+            </div>
+          )}
+        </div>
+
         {/* TCP Pose */}
         <div className="px-4 py-3 border-b border-zinc-800">
           <p className="text-[10px] uppercase tracking-widest text-zinc-500 mb-2">
@@ -175,11 +244,11 @@ export function Workspace3D() {
           </p>
           {tcpPos ? (
             <div className="font-mono text-[11px] space-y-0.5">
-              {(["x", "y", "z"] as const).map((axis, i) => (
+              {(["x", "y", "z"] as const).map((axis) => (
                 <div key={axis} className="flex justify-between">
                   <span className="text-zinc-500">{axis.toUpperCase()}</span>
                   <span className="text-zinc-200 tabular-nums">
-                    {(tcpPos as any)[axis].toFixed(4)} m
+                    {tcpPos[axis].toFixed(4)} m
                   </span>
                 </div>
               ))}
