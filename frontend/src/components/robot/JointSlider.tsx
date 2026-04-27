@@ -1,6 +1,6 @@
 import * as SliderPrimitive from "@radix-ui/react-slider";
 import type { Joint } from "@/types/motor";
-import { rawToDeg } from "@/lib/robot/utils";
+import { formatDeg, rawToDeg } from "@/lib/robot/utils";
 
 interface Props {
   joint: Joint;
@@ -27,11 +27,13 @@ export function JointSlider({
       <div className="flex items-center justify-between mb-2">
         <span className="text-sm font-medium">{joint.name}</span>
         <div className="flex gap-3 text-xs tabular-nums">
-          <span className="text-primary">cmd {rawToDeg(cmdPosition)}°</span>
+          <span className="text-primary">
+            cmd {formatDeg(rawToDeg(cmdPosition))}°
+          </span>
           <span
             className={isLagging ? "text-orange-400" : "text-muted-foreground"}
           >
-            actual {rawToDeg(joint.position)}°
+            actual {formatDeg(rawToDeg(joint.position))}°
           </span>
         </div>
       </div>

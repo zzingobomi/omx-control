@@ -1,5 +1,5 @@
 import { useRobotStore } from "@/store/robotStore";
-import { rawToDeg } from "@/lib/robot/utils";
+import { formatDeg, rawToDeg } from "@/lib/robot/utils";
 
 export function RobotStatus() {
   const joints = useRobotStore((s) => s.joints);
@@ -22,7 +22,7 @@ export function RobotStatus() {
               {j.name}
             </span>
             <span key={`deg-${j.id}`} className="text-right">
-              {rawToDeg(j.position)}°
+              {formatDeg(rawToDeg(j.position))}°
             </span>
             <span
               key={`raw-${j.id}`}

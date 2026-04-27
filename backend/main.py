@@ -28,13 +28,13 @@ def main():
     ZenohSession.init()
 
     # ─── 노드 초기화 ─────────────────────────────────────────
-    # motor_node = MotorNode()
-    # camera_node = CameraNode()
-    # motion_node = MotionNode()
-    # calib_node = CalibrationNode(camera=camera_node.camera)
+    motor_node = MotorNode()
+    camera_node = CameraNode()
+    motion_node = MotionNode()
+    calib_node = CalibrationNode(camera=camera_node.camera)
 
     # ─── 노드 시작 (별도 스레드) ──────────────────────────────
-    nodes = []
+    nodes = [motor_node, camera_node, motion_node, calib_node]
     for node in nodes:
         node.start()
         logger.info(f"노드 시작됨: {node.node_name}")
