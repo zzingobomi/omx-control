@@ -4,11 +4,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Progress } from "@/components/ui/progress";
-import type { TCPPose, MoveLRequest, TrajectoryState } from "@/types/motion";
-
-// UI는 mm 표시, 백엔드 전송은 m 단위 변환
-const MM_TO_M = 0.001;
-const M_TO_MM = 1000;
+import type {
+  TCPPose,
+  MoveLRequest,
+  TrajectoryState,
+  Vec3,
+} from "@/types/motion";
+import { mmToMVec3, mToMmVec3 } from "@/lib/robot/utils";
 
 interface Props {
   tcpPose: TCPPose | null;
@@ -27,22 +29,21 @@ export function MoveLControl({
   onMoveL,
   onStop,
 }: Props) {
-  // 목표 위치 (mm 단위로 UI 표시)
-  const [targetMm, setTargetMm] = useState<[number, number, number]>([0, 0, 0]);
+  const [targetMm, setTargetMm] = useState<Vec3>([0, 0, 0]);
   const [duration, setDuration] = useState(3.0);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 현재 TCP → 목표값으로 복사
   const handleSync = useCallback(async () => {
     setSyncing(true);
     const pose = await onGetTCP();
     if (pose) {
+      const mm = mToMmVec3(pose.position);
       setTargetMm([
-        Math.round(pose.position[0] * M_TO_MM * 10) / 10,
-        Math.round(pose.position[1] * M_TO_MM * 10) / 10,
-        Math.round(pose.position[2] * M_TO_MM * 10) / 10,
+        Math.round(mm[0] * 10) / 10,
+        Math.round(mm[1] * 10) / 10,
+        Math.round(mm[2] * 10) / 10,
       ]);
       setError(null);
     } else {
@@ -51,11 +52,11 @@ export function MoveLControl({
     setSyncing(false);
   }, [onGetTCP]);
 
-  const handleAxisChange = (axis: number, value: string) => {
+  const handleTargetMmChange = (axis: number, value: string) => {
     const num = parseFloat(value);
     if (!isNaN(num)) {
       setTargetMm((prev) => {
-        const next: [number, number, number] = [...prev];
+        const next: Vec3 = [...prev];
         next[axis] = num;
         return next;
       });
@@ -65,12 +66,11 @@ export function MoveLControl({
   const handleExecute = async () => {
     setLoading(true);
     setError(null);
-    const positionM: [number, number, number] = [
-      targetMm[0] * MM_TO_M,
-      targetMm[1] * MM_TO_M,
-      targetMm[2] * MM_TO_M,
-    ];
-    const ok = await onMoveL({ position: positionM, duration });
+    const positionM: Vec3 = mmToMVec3(targetMm);
+    const ok = await onMoveL({
+      position: positionM,
+      duration,
+    });
     if (!ok) setError("MoveL 실패");
     setLoading(false);
   };
@@ -85,10 +85,10 @@ export function MoveLControl({
         <div className="rounded-md bg-muted px-3 py-2 text-xs font-mono">
           <p className="text-muted-foreground mb-1">현재 TCP (mm)</p>
           <div className="grid grid-cols-3 gap-2">
-            {AXES.map((ax, i) => (
-              <div key={ax}>
-                <span className="text-muted-foreground">{ax}: </span>
-                <span>{(tcpPose.position[i] * M_TO_MM).toFixed(1)}</span>
+            {mToMmVec3(tcpPose.position).map((v, i) => (
+              <div key={AXES[i]}>
+                <span className="text-muted-foreground">{AXES[i]}: </span>
+                <span>{v.toFixed(1)}</span>
               </div>
             ))}
           </div>
@@ -106,7 +106,7 @@ export function MoveLControl({
                 type="number"
                 step={1}
                 value={targetMm[i]}
-                onChange={(e) => handleAxisChange(i, e.target.value)}
+                onChange={(e) => handleTargetMmChange(i, e.target.value)}
                 className="h-8 text-xs text-right"
               />
             </div>
