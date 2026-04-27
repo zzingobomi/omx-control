@@ -67,10 +67,7 @@ export function MoveLControl({
     setLoading(true);
     setError(null);
     const positionM: Vec3 = mmToMVec3(targetMm);
-    const ok = await onMoveL({
-      position: positionM,
-      duration,
-    });
+    const ok = await onMoveL({ position: positionM });
     if (!ok) setError("MoveL 실패");
     setLoading(false);
   };

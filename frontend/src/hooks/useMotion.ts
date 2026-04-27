@@ -7,13 +7,14 @@ import type {
   OrbitRotateRequest,
   MoveJRequest,
   MoveLRequest,
+  TrajectoryState,
 } from "@/types/motion";
 import { useMotionStore } from "@/store/motionStore";
 
 interface UseMotionReturn {
   tcpPose: TCPPose | null;
   orbitActive: boolean;
-  trajectoryState: any;
+  trajectoryState: TrajectoryState | null;
   loading: boolean;
   error: string | null;
 
@@ -57,7 +58,7 @@ export function useMotion(): UseMotionReturn {
     setLoading(true);
     const res = await bridge.callService(
       ServiceKey.MOTION_MOVE_TCP,
-      req as unknown as Record<string, unknown>,
+      req as unknown as Record<string, unknown>
     );
     setLoading(false);
     if (!res.success) setError(res.message);
@@ -86,7 +87,7 @@ export function useMotion(): UseMotionReturn {
   const orbitRotate = useCallback(async (req: OrbitRotateRequest) => {
     const res = await bridge.callService(
       ServiceKey.MOTION_ORBIT_ROTATE,
-      req as unknown as Record<string, unknown>,
+      req as unknown as Record<string, unknown>
     );
     if (!res.success) setError(res.message);
     else setError(null);
@@ -106,8 +107,8 @@ export function useMotion(): UseMotionReturn {
     setError(null);
 
     const res = await bridge.callService(
-      ServiceKey.MOTOR_MOVE_J,
-      req as unknown as Record<string, unknown>,
+      ServiceKey.MOTION_MOVE_J,
+      req as unknown as Record<string, unknown>
     );
 
     setLoading(false);
@@ -124,7 +125,7 @@ export function useMotion(): UseMotionReturn {
 
     const res = await bridge.callService(
       ServiceKey.MOTION_MOVE_L,
-      req as unknown as Record<string, unknown>,
+      req as unknown as Record<string, unknown>
     );
 
     setLoading(false);

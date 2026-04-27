@@ -20,20 +20,16 @@ export interface OrbitRotateRequest {
 }
 
 // ─── MoveJ ───────────────────────────────────────────────────
-export interface JointTarget {
-  id: number;
-  position: number; // Dynamixel raw (0 ~ 4095)
-}
-
 export interface MoveJRequest {
-  joints: JointTarget[];
-  duration: number; // seconds
+  joints: Array<{
+    id: number;
+    degree: number;
+  }>;
 }
 
 // ─── MoveL ───────────────────────────────────────────────────
 export interface MoveLRequest {
   position: Vec3; // [x, y, z] meter
-  duration: number; // seconds
 }
 
 export type TrajectoryStatus =

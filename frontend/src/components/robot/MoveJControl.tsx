@@ -24,7 +24,7 @@ export function MoveJControl({ trajectoryState, onMoveJ, onStop }: Props) {
 
   // UI 설정
   const [targetDeg, setTargetDeg] = useState<Record<number, number>>(
-    Object.fromEntries(ARM_JOINTS.map((j) => [j.id, 0])),
+    Object.fromEntries(ARM_JOINTS.map((j) => [j.id, 0]))
   );
   const [duration, setDuration] = useState(3.0);
   const [loading, setLoading] = useState(false);
@@ -59,10 +59,9 @@ export function MoveJControl({ trajectoryState, onMoveJ, onStop }: Props) {
 
     const joints = ARM_JOINTS.map((j) => ({
       id: j.id,
-      position: degToRaw(targetDeg[j.id] ?? 0),
+      degree: targetDeg[j.id] ?? 0,
     }));
-
-    const ok = await onMoveJ({ joints, duration });
+    const ok = await onMoveJ({ joints });
 
     if (!ok) setError("MoveJ 실패");
 

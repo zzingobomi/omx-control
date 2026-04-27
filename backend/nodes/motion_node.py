@@ -4,6 +4,7 @@ import threading
 from enum import Enum
 
 import numpy as np
+from ruckig import Ruckig, InputParameter, OutputParameter, Result
 
 from core.base_node import BaseNode
 from core.topic_map import Service, Topic
@@ -15,12 +16,23 @@ from modules.kinematics.motion_modes import MotionModes
 logger = logging.getLogger(__name__)
 
 GRIPPER_ID = 6
-MOVEL_FREQ = 50  # Hz (waypoint 간격 20ms)
-_T_ACCEL = 0.20
-_T_DECEL = 0.20
+TRAJ_FREQ = 50        # Hz — MoveJ / MoveL 공통 루프 주기
+TRAJ_DT = 1.0 / TRAJ_FREQ   # 20ms
 
-# IK 연산 초과 경고 (50Hz → dt=20ms)
-_IK_WARN_THRESHOLD = 1.0 / MOVEL_FREQ * 0.8  # dt의 80% = 16ms
+# ── MoveJ 관절 제약 (id 순서: 1,2,3,4,5) ──────────────────────
+# XL430(1~3): max ~41 rpm ≈ 4.3 rad/s
+# XL330(4~5): max ~61 rpm ≈ 6.4 rad/s
+# 안정성 / 정밀도 우선 세팅 (soft motion profile)
+# - velocity ~35% 수준 제한
+# - acceleration / jerk 추가 감속으로 부드러운 움직임 보장
+_J_MAX_VEL = [1.5, 1.5, 1.5, 2.5, 2.5]
+_J_MAX_ACC = [3.0, 3.0, 3.0, 5.0, 5.0]
+_J_MAX_JERK = [10.0, 10.0, 10.0, 20.0, 20.0]
+
+# ── MoveL 경로 제약 (1D path parameter, 단위: 미터) ────────────
+_L_MAX_VEL = 0.10   # m/s   (10 cm/s)
+_L_MAX_ACC = 0.25   # m/s²
+_L_MAX_JERK = 1.00   # m/s³
 
 # MoveL 종료 후 Profile 복원 값
 _DEFAULT_PROFILE_VEL = 150
@@ -44,6 +56,7 @@ class MotionNode(BaseNode):
             m for m in self._motor_cfgs if m.id != GRIPPER_ID
         ]
         self._arm_ids = [cfg.id for cfg in self._arm_cfgs]
+        self._n_arm = len(self._arm_cfgs)
 
         self._motion = MotionModes()
         self._cache = JointStateCache()
@@ -55,8 +68,10 @@ class MotionNode(BaseNode):
         self.create_service(Service.MOTION_GET_TCP, self._srv_get_tcp)
         self.create_service(Service.MOTION_MOVE_TCP, self._srv_move_tcp)
         self.create_service(Service.MOTION_ORBIT_SET, self._srv_orbit_set)
-        self.create_service(Service.MOTION_ORBIT_ROTATE, self._srv_orbit_rotate)
+        self.create_service(Service.MOTION_ORBIT_ROTATE,
+                            self._srv_orbit_rotate)
         self.create_service(Service.MOTION_ORBIT_CLEAR, self._srv_orbit_clear)
+        self.create_service(Service.MOTION_MOVE_J, self._srv_move_j)
         self.create_service(Service.MOTION_MOVE_L, self._srv_move_l)
         self.create_service(Service.MOTION_STOP, self._srv_stop)
 
@@ -78,13 +93,14 @@ class MotionNode(BaseNode):
 
     def _publish_cmd(self, angles_rad: list[float]) -> None:
         cmds = self._joint_angles_rad_to_cmd(angles_rad)
-        self.publish(Topic.MOTOR_CMD_JOINT, {"timestamp": time.time(), "joints": cmds})
+        self.publish(Topic.MOTOR_CMD_JOINT, {
+                     "timestamp": time.time(), "joints": cmds})
 
     def _publish_traj_state(self, status: TrajStatus, progress: float) -> None:
         self.publish(
             Topic.MOTION_STATE_TRAJ,
             {
-                "status": status.value,
+                "status": status,
                 "progress": round(progress, 3),
                 "timestamp": time.time(),
             },
@@ -180,46 +196,18 @@ class MotionNode(BaseNode):
         self.log("info", "Orbit 모드 해제")
         return {"success": True, "message": "ok", "data": {}}
 
-    # ─── MoveL ─────────────────────────────────────────────────
+    # ─── Trajectory ────────────────────────────────────────────
 
-    def _srv_move_l(self, req: dict) -> dict:
-        data = req.get("data", {})
-        target_pos = data.get("position")
-        duration = float(data.get("duration", 3.0))
-        duration = max(0.5, min(30.0, duration))
-
-        if target_pos is None:
-            return {"success": False, "message": "position 필요", "data": {}}
-
-        angles = self._cache.get_joint_angles_rad(self._arm_cfgs)
-        if angles is None:
-            return {"success": False, "message": "관절 상태 수신 전", "data": {}}
-
-        try:
-            start_pose = self._motion.get_tcp_pose(angles)
-            start_pos = list(start_pose.position)
-            target_list = list(target_pos)
-
-            self._stop_trajectory()
-
-            self._traj_thread = threading.Thread(
-                target=self._run_move_l,
-                args=(start_pos, target_list, duration, list(angles)),
-                name="movel-traj",
-                daemon=True,
-            )
-            self._traj_thread.start()
-
-            self.log(
-                "info",
-                f"MoveL 시작 | {[f'{v:.3f}' for v in start_pos]} → "
-                f"{[f'{v:.3f}' for v in target_list]} | duration={duration:.1f}s",
-            )
-            return {"success": True, "message": "ok", "data": {"duration": duration}}
-
-        except Exception as e:
-            logger.error(f"MoveL 시작 오류: {e}")
-            return {"success": False, "message": str(e), "data": {}}
+    def _set_arm_profile(self, velocity: int, acceleration: int) -> bool:
+        res = self.call_service(
+            Service.MOTOR_SET_PROFILE_ALL,
+            {
+                "ids": self._arm_ids,
+                "velocity": velocity,
+                "acceleration": acceleration,
+            },
+        )
+        return res.get("success", False)
 
     def _srv_stop(self, req: dict) -> dict:
         was_running = self._traj_thread and self._traj_thread.is_alive()
@@ -236,106 +224,273 @@ class MotionNode(BaseNode):
         self._traj_thread = None
         self._traj_stop.clear()
 
-    def _set_arm_profile(self, velocity: int, acceleration: int) -> bool:
-        res = self.call_service(
-            Service.MOTOR_SET_PROFILE_ALL,
-            {
-                "ids": self._arm_ids,
-                "velocity": velocity,
-                "acceleration": acceleration,
-            },
+    def _start_traj_thread(self, target, args: tuple, name: str) -> None:
+        self._stop_trajectory()
+        self._traj_thread = threading.Thread(
+            target=target, args=args, name=name, daemon=True,
         )
-        return res.get("success", False)
+        self._traj_thread.start()
+
+    # ─── MoveJ ─────────────────────────────────────────────────
+
+    def _srv_move_j(self, req: dict) -> dict:
+        data = req.get("data", {})
+        target_joints = data.get("joints", [])
+        if not target_joints:
+            return {"success": False, "message": "joints 필요", "data": {}}
+
+        current_angles = self._cache.get_joint_angles_rad(self._arm_cfgs)
+        if current_angles is None:
+            return {"success": False, "message": "관절 상태 수신 전", "data": {}}
+
+        target_by_id = {int(j["id"]): float(j["degree"])
+                        for j in target_joints}
+        target_angles = [
+            deg_to_rad(target_by_id.get(cfg.id, 0.0))
+            for cfg in self._arm_cfgs
+        ]
+
+        self._start_traj_thread(
+            target=self._run_move_j,
+            args=(list(current_angles), target_angles),
+            name="movej-traj",
+        )
+
+        self.log(
+            "info",
+            f"MoveJ 시작 | target={[f'{d:.1f}°' for d in target_by_id.values()]}",
+        )
+        return {"success": True, "message": "ok", "data": {}}
+
+    def _run_move_j(
+        self,
+        start_angles:  list[float],
+        target_angles: list[float],
+    ) -> None:
+        ok = self._set_arm_profile(velocity=0, acceleration=0)
+        if not ok:
+            logger.warning("MoveJ: profile 비활성화 실패 — 계속 진행")
+
+        otg = Ruckig(self._n_arm, TRAJ_DT)
+        inp = InputParameter(self._n_arm)
+        out = OutputParameter(self._n_arm)
+
+        inp.current_position = list(start_angles)
+        inp.current_velocity = [0.0] * self._n_arm  # 정지 상태에서 출발
+        inp.current_acceleration = [0.0] * self._n_arm
+        inp.target_position = list(target_angles)
+        inp.target_velocity = [0.0] * self._n_arm  # 정지 상태로 도착
+        inp.target_acceleration = [0.0] * self._n_arm
+        inp.max_velocity = list(_J_MAX_VEL)
+        inp.max_acceleration = list(_J_MAX_ACC)
+        inp.max_jerk = list(_J_MAX_JERK)
+
+        first_result = otg.update(inp, out)
+        est_duration = out.trajectory.duration
+        t_start = time.time()
+
+        try:
+            # 첫 번째 step 명령 발행
+            self._publish_cmd(list(out.new_position))
+            self._publish_traj_state("running", 0.0)
+
+            if first_result == Result.Finished:
+                self._publish_traj_state("done", 1.0)
+                self.log("info", f"MoveJ 완료 (즉시, {est_duration*1000:.0f}ms)")
+                return
+
+            # 이후 step 루프
+            inp.current_position = list(out.new_position)
+            inp.current_velocity = list(out.new_velocity)
+            inp.current_acceleration = list(out.new_acceleration)
+
+            while True:
+                if self._traj_stop.is_set():
+                    self._publish_traj_state("stopped", 0.0)
+                    return
+
+                next_t = t_start + (time.time() - t_start) + TRAJ_DT
+                result = otg.update(inp, out)
+                elapsed = time.time() - t_start
+                progress = min(elapsed / est_duration,
+                               1.0) if est_duration > 0 else 1.0
+
+                self._publish_cmd(list(out.new_position))
+                self._publish_traj_state("running", progress)
+
+                if result == Result.Finished:
+                    self._publish_traj_state("done", 1.0)
+                    self.log("info", f"MoveJ 완료 ({elapsed*1000:.0f}ms)")
+                    return
+
+                if result == Result.Error:
+                    logger.error("MoveJ Ruckig 오류")
+                    self._publish_traj_state("failed", progress)
+                    return
+
+                inp.current_position = list(out.new_position)
+                inp.current_velocity = list(out.new_velocity)
+                inp.current_acceleration = list(out.new_acceleration)
+
+                sleep_time = next_t - time.time()
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
+        finally:
+            ok = self._set_arm_profile(
+                velocity=_DEFAULT_PROFILE_VEL,
+                acceleration=_DEFAULT_PROFILE_ACC,
+            )
+            if not ok:
+                logger.warning("MoveJ: profile 복원 실패")
+
+    # ─── MoveL ─────────────────────────────────────────────────
+
+    def _srv_move_l(self, req: dict) -> dict:
+        data = req.get("data", {})
+        target_pos = data.get("position")
+        if target_pos is None:
+            return {"success": False, "message": "position 필요", "data": {}}
+
+        angles = self._cache.get_joint_angles_rad(self._arm_cfgs)
+        if angles is None:
+            return {"success": False, "message": "관절 상태 수신 전", "data": {}}
+
+        try:
+            start_pose = self._motion.get_tcp_pose(angles)
+            start_pos = list(start_pose.position)
+            target_list = list(target_pos)
+            distance = float(np.linalg.norm(
+                np.array(target_list) - np.array(start_pos)
+            ))
+
+            if distance < 1e-4:
+                return {"success": True, "message": "이미 목표 위치", "data": {}}
+
+            self._start_traj_thread(
+                target=self._run_move_l,
+                args=(start_pos, target_list, distance, list(angles)),
+                name="movel-traj",
+            )
+
+            self.log(
+                "info",
+                f"MoveL 시작 | {[f'{v:.3f}' for v in start_pos]} → "
+                f"{[f'{v:.3f}' for v in target_list]} | dist={distance*100:.1f}cm",
+            )
+            return {"success": True, "message": "ok", "data": {}}
+
+        except Exception as e:
+            logger.error(f"MoveL 시작 오류: {e}")
+            return {"success": False, "message": str(e), "data": {}}
 
     def _run_move_l(
         self,
-        start_pos: list[float],
-        end_pos: list[float],
-        duration: float,
+        start_pos:    list[float],
+        end_pos:      list[float],
+        distance:     float,
         start_angles: list[float],
     ) -> None:
-        """
-        MoveL (time-based streaming cartesian motion)
-
-        flow:
-        time → t_norm → s(t) → TCP → IK → joint cmd
-
-        space sampling (dt fixed, speed varies):
-
-        A ●  ●   ●    ●     ●      ●     ●    ●   ●  B
-        accel     cruise (uniform)       decel
-        (촘촘→벌어짐→촘촘)
-
-        특징:
-        - TCP 직선 경로 보장 (Cartesian path)
-        - 50Hz time-based waypoint streaming
-        - s(t): trapezoidal velocity profile (accel/cruise/decel)
-        - IK 기반 real-time joint generation
-        - spacing 변화는 속도 변화의 결과
-
-        주의:
-        - waypoint spacing 불균일 (시간 기준 샘플링 구조)
-        - IK latency가 전체 안정성에 직접 영향
-        - dt 깨지면 trajectory distortion 발생
-        - 긴 거리 + 짧은 시간 = coarse sampling 위험
-
-        개선:
-        - Ruckig: joint-space trajectory + jerk 제한 + adaptive timing
-        - MoveIt: constraint-based global planning + smoothing
-        - (또는) distance-based resampling → uniform spatial resolution
-        """
-        dt = 1.0 / MOVEL_FREQ
-        n_steps = max(1, int(duration * MOVEL_FREQ))
-        start = np.array(start_pos, dtype=float)
-        end = np.array(end_pos, dtype=float)
-
-        current_angles = list(start_angles)
-
-        # Profile vel=0, acc=0 → 내장 프로파일 비활성화
         ok = self._set_arm_profile(velocity=0, acceleration=0)
         if not ok:
             logger.warning("MoveL: profile 비활성화 실패 — 계속 진행")
 
+        start = np.array(start_pos, dtype=float)
+        end = np.array(end_pos,   dtype=float)
+
+        # 1D Ruckig (path parameter = 실제 이동 거리, 단위 m)
+        otg = Ruckig(1, TRAJ_DT)
+        inp = InputParameter(1)
+        out = OutputParameter(1)
+
+        inp.current_position = [0.0]
+        inp.current_velocity = [0.0]
+        inp.current_acceleration = [0.0]
+        inp.target_position = [distance]
+        inp.target_velocity = [0.0]
+        inp.target_acceleration = [0.0]
+        inp.max_velocity = [_L_MAX_VEL]
+        inp.max_acceleration = [_L_MAX_ACC]
+        inp.max_jerk = [_L_MAX_JERK]
+
+        current_angles = list(start_angles)
+        first_result = otg.update(inp, out)
+        est_duration = out.trajectory.duration
         t_start = time.time()
 
+        self.log(
+            "info",
+            f"MoveL Ruckig | dist={distance*100:.1f}cm "
+            f"| 예상 {est_duration:.1f}s",
+        )
+
+        def _step(s_meters: float) -> bool:
+            nonlocal current_angles
+            ratio = s_meters / distance
+            waypoint = (start + ratio * (end - start)).tolist()
+            result = self._motion.move_tcp(waypoint, current_angles)
+            if result is None:
+                logger.warning(
+                    f"MoveL IK 실패 | s={s_meters*100:.1f}cm "
+                    f"| waypoint={[f'{v:.4f}' for v in waypoint]}"
+                )
+                return False
+            current_angles = result
+            self._publish_cmd(result)
+            return True
+
         try:
-            for i in range(n_steps):
+            # 첫 번째 step
+            if not _step(out.new_position[0]):
+                self._publish_traj_state("failed", 0.0)
+                return
+            elapsed = time.time() - t_start
+            progress = min(elapsed / est_duration,
+                           1.0) if est_duration > 0 else 1.0
+            self._publish_traj_state("running", progress)
+
+            if first_result == Result.Finished:
+                self._publish_traj_state("done", 1.0)
+                self.log("info", "MoveL 완료 (즉시)")
+                return
+
+            inp.current_position = list(out.new_position)
+            inp.current_velocity = list(out.new_velocity)
+            inp.current_acceleration = list(out.new_acceleration)
+
+            while True:
                 if self._traj_stop.is_set():
-                    self._publish_traj_state(TrajStatus.STOPPED, (i + 1) / n_steps)
+                    self._publish_traj_state("stopped", progress)
                     return
 
-                t_norm = (i + 1) / n_steps
-                s = self._trapezoid_s(t_norm, _T_ACCEL, _T_DECEL)
-                waypoint = (start + s * (end - start)).tolist()
+                next_t = t_start + (time.time() - t_start) + TRAJ_DT
+                result = otg.update(inp, out)
 
-                ik_t0 = time.time()
-                result = self._motion.move_tcp(waypoint, current_angles)
-                ik_dt = time.time() - ik_t0
-                if ik_dt > _IK_WARN_THRESHOLD:
-                    logger.warning(
-                        f"MoveL IK 느림 | {ik_dt * 1000:.1f}ms > {_IK_WARN_THRESHOLD * 1000:.0f}ms "
-                        f"(step={i + 1}/{n_steps})"
-                    )
-
-                if result is None:
-                    logger.warning(
-                        f"MoveL IK 실패 | step={i + 1}/{n_steps} "
-                        f"| waypoint={[f'{v:.4f}' for v in waypoint]}"
-                    )
-                    self._publish_traj_state(TrajStatus.FAILED, t_norm)
+                if not _step(out.new_position[0]):
+                    self._publish_traj_state("failed", progress)
                     return
 
-                current_angles = result
-                self._publish_cmd(result)
-                self._publish_traj_state(TrajStatus.RUNNING, t_norm)
+                elapsed = time.time() - t_start
+                progress = min(elapsed / est_duration,
+                               1.0) if est_duration > 0 else 1.0
+                self._publish_traj_state("running", progress)
 
-                next_t = t_start + (i + 1) * dt
+                if result == Result.Finished:
+                    self._publish_traj_state("done", 1.0)
+                    self.log("info", f"MoveL 완료 ({elapsed*1000:.0f}ms)")
+                    return
+
+                if result == Result.Error:
+                    logger.error("MoveL Ruckig 오류")
+                    self._publish_traj_state("failed", progress)
+                    return
+
+                inp.current_position = list(out.new_position)
+                inp.current_velocity = list(out.new_velocity)
+                inp.current_acceleration = list(out.new_acceleration)
+
                 sleep_time = next_t - time.time()
                 if sleep_time > 0:
                     time.sleep(sleep_time)
-
-            self._publish_traj_state(TrajStatus.DONE, 1.0)
-            self.log("info", "MoveL 완료")
 
         finally:
             ok = self._set_arm_profile(
@@ -344,15 +499,3 @@ class MotionNode(BaseNode):
             )
             if not ok:
                 logger.warning("MoveL: profile 복원 실패")
-
-    @staticmethod
-    def _trapezoid_s(t: float, t_a: float, t_d: float) -> float:
-        t_c = 1.0 - t_a - t_d
-        peak = 1.0 / (t_a / 2.0 + t_c + t_d / 2.0)
-        if t <= t_a:
-            return peak * (t**2) / (2.0 * t_a)
-        elif t <= t_a + t_c:
-            return peak * (t_a / 2.0 + (t - t_a))
-        else:
-            t_rem = 1.0 - t
-            return 1.0 - peak * (t_rem**2) / (2.0 * t_d)

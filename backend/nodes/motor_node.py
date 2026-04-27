@@ -38,9 +38,9 @@ class MotorNode(BaseNode):
         self.create_service(Service.MOTOR_ENABLE, self._srv_enable)
         self.create_service(Service.MOTOR_REBOOT, self._srv_reboot)
         self.create_service(Service.MOTOR_SET_PROFILE, self._srv_set_profile)
-        self.create_service(Service.MOTOR_SET_PROFILE_ALL, self._srv_set_profile_all)
+        self.create_service(Service.MOTOR_SET_PROFILE_ALL,
+                            self._srv_set_profile_all)
         self.create_service(Service.MOTOR_GET_CONFIG, self._srv_get_config)
-        self.create_service(Service.MOTOR_MOVE_J, self._srv_move_j)
 
     # ─── Lifecycle ───────────────────────────────────────────
 
@@ -159,7 +159,8 @@ class MotorNode(BaseNode):
             if motor_id and velocity is not None:
                 self.driver.set_profile_velocity(motor_id, int(velocity))
             if motor_id and acceleration is not None:
-                self.driver.set_profile_acceleration(motor_id, int(acceleration))
+                self.driver.set_profile_acceleration(
+                    motor_id, int(acceleration))
             return {"success": True, "message": "ok", "data": {}}
         except Exception as e:
             return {"success": False, "message": str(e), "data": {}}
@@ -196,91 +197,3 @@ class MotorNode(BaseNode):
             "message": "ok",
             "data": {"motors": configs, "torque_enabled": self.torque_enabled},
         }
-
-    def _srv_move_j(self, req: dict) -> dict:
-        """
-        MoveJ (profile-based joint motion)
-
-        - joint target position 이동 (trajectory 생성 없음)
-        - displacement 기반으로 velocity / accel만 계산
-        - Dynamixel 내부 trapezoidal profile에 의존
-
-        flow:
-        current vs target → distance → peak v/a → motor unit → goal position
-
-        특징:
-        - joint independent, no coupling
-        - no external trajectory planning (motor executes profile)
-        - limited to firmware motion quality
-
-        개선:
-        - Ruckig: external trajectory + jerk control + realtime replanning
-        """
-        if not self.connected:
-            return {"success": False, "message": "모터 미연결", "data": {}}
-
-        data = req.get("data", {})
-        target_joints = data.get("joints", [])
-        duration_sec = float(data.get("duration", 3.0))
-        duration_sec = max(0.5, min(30.0, duration_sec))
-
-        if not target_joints:
-            return {"success": False, "message": "joints 필요", "data": {}}
-
-        try:
-            current_positions = self.driver.get_present_positions()
-            velocities: dict[int, int] = {}
-            accelerations: dict[int, int] = {}
-
-            for j in target_joints:
-                mid = int(j["id"])
-                target_raw = int(j["position"])
-                current_raw = current_positions.get(mid, target_raw)
-
-                displacement_raw = abs(target_raw - current_raw)
-                displacement_rad = displacement_raw / RAW_MAX * 2.0 * math.pi
-
-                if displacement_rad < 1e-4:
-                    velocities[mid] = 0
-                    accelerations[mid] = 0
-                    continue
-
-                # ── Trapezoidal peak velocity ─────────────────────────
-                peak_vel_rad_s = (
-                    displacement_rad
-                    / (_CRUISE_RATIO + _ACCEL_RATIO / 2 + _DECEL_RATIO / 2)
-                    / duration_sec
-                )
-                # rad/s → rpm
-                peak_vel_rpm = peak_vel_rad_s * 60.0 / (2.0 * math.pi)
-                vel_value = max(1, int(peak_vel_rpm / _PROFILE_VEL_UNIT))
-
-                # ── Trapezoidal peak acceleration ─────────────────────
-                peak_acc_rad_s2 = peak_vel_rad_s / (_ACCEL_RATIO * duration_sec)
-                # rad/s² → rev/min²
-                peak_acc_rpm2 = peak_acc_rad_s2 * (60.0**2) / (2.0 * math.pi)
-                acc_value = max(1, int(peak_acc_rpm2 / _PROFILE_ACC_UNIT))
-
-                velocities[mid] = vel_value
-                accelerations[mid] = acc_value
-
-            self.driver.set_profile_accelerations_sync(accelerations)
-            self.driver.set_profile_velocities_sync(velocities)
-
-            positions = {int(j["id"]): int(j["position"]) for j in target_joints}
-            self.driver.set_goal_positions_sync(positions)
-
-            self.log(
-                "info",
-                f"MoveJ 시작 | duration={duration_sec:.1f}s "
-                f"| joints={list(positions.keys())}",
-            )
-            return {
-                "success": True,
-                "message": "ok",
-                "data": {"duration": duration_sec},
-            }
-
-        except Exception as e:
-            logger.error(f"MoveJ 오류: {e}")
-            return {"success": False, "message": str(e), "data": {}}

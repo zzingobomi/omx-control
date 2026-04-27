@@ -127,6 +127,7 @@ _ALWAYS_SUBSCRIBE = [
     Topic.CAMERA_STATE_STATUS,
     Topic.SYSTEM_HEARTBEAT,
     Topic.SYSTEM_LOG,
+    Topic.MOTION_STATE_TRAJ,
 ]
 
 _zenoh_subs: list[zenoh.Subscriber] = []
