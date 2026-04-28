@@ -16,8 +16,8 @@ from modules.kinematics.motion_modes import MotionModes
 logger = logging.getLogger(__name__)
 
 GRIPPER_ID = 6
-TRAJ_FREQ = 50        # Hz — MoveJ / MoveL 공통 루프 주기
-TRAJ_DT = 1.0 / TRAJ_FREQ   # 20ms
+TRAJ_FREQ = 50  # Hz — MoveJ / MoveL 공통 루프 주기
+TRAJ_DT = 1.0 / TRAJ_FREQ  # 20ms
 
 # ── MoveJ 관절 제약 (id 순서: 1,2,3,4,5) ──────────────────────
 # XL430(1~3): max ~41 rpm ≈ 4.3 rad/s
@@ -30,9 +30,9 @@ _J_MAX_ACC = [3.0, 3.0, 3.0, 5.0, 5.0]
 _J_MAX_JERK = [10.0, 10.0, 10.0, 20.0, 20.0]
 
 # ── MoveL 경로 제약 (1D path parameter, 단위: 미터) ────────────
-_L_MAX_VEL = 0.10   # m/s   (10 cm/s)
-_L_MAX_ACC = 0.25   # m/s²
-_L_MAX_JERK = 1.00   # m/s³
+_L_MAX_VEL = 0.10  # m/s   (10 cm/s)
+_L_MAX_ACC = 0.25  # m/s²
+_L_MAX_JERK = 1.00  # m/s³
 
 # MoveL 종료 후 Profile 복원 값
 _DEFAULT_PROFILE_VEL = 150
@@ -67,10 +67,6 @@ class MotionNode(BaseNode):
 
         self.create_service(Service.MOTION_GET_TCP, self._srv_get_tcp)
         self.create_service(Service.MOTION_MOVE_TCP, self._srv_move_tcp)
-        self.create_service(Service.MOTION_ORBIT_SET, self._srv_orbit_set)
-        self.create_service(Service.MOTION_ORBIT_ROTATE,
-                            self._srv_orbit_rotate)
-        self.create_service(Service.MOTION_ORBIT_CLEAR, self._srv_orbit_clear)
         self.create_service(Service.MOTION_MOVE_J, self._srv_move_j)
         self.create_service(Service.MOTION_MOVE_L, self._srv_move_l)
         self.create_service(Service.MOTION_STOP, self._srv_stop)
@@ -93,8 +89,7 @@ class MotionNode(BaseNode):
 
     def _publish_cmd(self, angles_rad: list[float]) -> None:
         cmds = self._joint_angles_rad_to_cmd(angles_rad)
-        self.publish(Topic.MOTOR_CMD_JOINT, {
-                     "timestamp": time.time(), "joints": cmds})
+        self.publish(Topic.MOTOR_CMD_JOINT, {"timestamp": time.time(), "joints": cmds})
 
     def _publish_traj_state(self, status: TrajStatus, progress: float) -> None:
         self.publish(
@@ -145,57 +140,6 @@ class MotionNode(BaseNode):
         except Exception as e:
             return {"success": False, "message": str(e), "data": {}}
 
-    def _srv_orbit_set(self, req: dict) -> dict:
-        angles = self._cache.get_joint_angles_rad(self._arm_cfgs)
-        if angles is None:
-            return {"success": False, "message": "관절 상태 수신 전", "data": {}}
-        try:
-            pose = self._motion.orbit_set(angles)
-            self.log(
-                "info", f"Orbit center 설정: {[f'{v:.3f}' for v in pose.position]}"
-            )
-            return {
-                "success": True,
-                "message": "ok",
-                "data": {"position": pose.position, "quaternion": pose.quaternion},
-            }
-        except Exception as e:
-            return {"success": False, "message": str(e), "data": {}}
-
-    def _srv_orbit_rotate(self, req: dict) -> dict:
-        data = req.get("data", {})
-        delta_pitch_deg = data.get("delta_pitch", 0.0)
-        delta_yaw_deg = data.get("delta_yaw", 0.0)
-
-        if not self._motion.orbit_active:
-            return {"success": False, "message": "orbit center 미설정", "data": {}}
-
-        angles = self._cache.get_joint_angles_rad(self._arm_cfgs)
-        if angles is None:
-            return {"success": False, "message": "관절 상태 수신 전", "data": {}}
-
-        try:
-            result = self._motion.orbit_rotate(
-                delta_elevation=deg_to_rad(delta_pitch_deg),
-                delta_azimuth=deg_to_rad(delta_yaw_deg),
-                current_joint_angles=angles,
-            )
-            if result is None:
-                return {
-                    "success": False,
-                    "message": "IK 수렴 실패 (관절 한계)",
-                    "data": {},
-                }
-            self._publish_cmd(result)
-            return {"success": True, "message": "ok", "data": {}}
-        except Exception as e:
-            return {"success": False, "message": str(e), "data": {}}
-
-    def _srv_orbit_clear(self, req: dict) -> dict:
-        self._motion.orbit_clear()
-        self.log("info", "Orbit 모드 해제")
-        return {"success": True, "message": "ok", "data": {}}
-
     # ─── Trajectory ────────────────────────────────────────────
 
     def _set_arm_profile(self, velocity: int, acceleration: int) -> bool:
@@ -227,7 +171,10 @@ class MotionNode(BaseNode):
     def _start_traj_thread(self, target, args: tuple, name: str) -> None:
         self._stop_trajectory()
         self._traj_thread = threading.Thread(
-            target=target, args=args, name=name, daemon=True,
+            target=target,
+            args=args,
+            name=name,
+            daemon=True,
         )
         self._traj_thread.start()
 
@@ -243,11 +190,9 @@ class MotionNode(BaseNode):
         if current_angles is None:
             return {"success": False, "message": "관절 상태 수신 전", "data": {}}
 
-        target_by_id = {int(j["id"]): float(j["degree"])
-                        for j in target_joints}
+        target_by_id = {int(j["id"]): float(j["degree"]) for j in target_joints}
         target_angles = [
-            deg_to_rad(target_by_id.get(cfg.id, 0.0))
-            for cfg in self._arm_cfgs
+            deg_to_rad(target_by_id.get(cfg.id, 0.0)) for cfg in self._arm_cfgs
         ]
 
         self._start_traj_thread(
@@ -264,7 +209,7 @@ class MotionNode(BaseNode):
 
     def _run_move_j(
         self,
-        start_angles:  list[float],
+        start_angles: list[float],
         target_angles: list[float],
     ) -> None:
         ok = self._set_arm_profile(velocity=0, acceleration=0)
@@ -296,7 +241,7 @@ class MotionNode(BaseNode):
 
             if first_result == Result.Finished:
                 self._publish_traj_state("done", 1.0)
-                self.log("info", f"MoveJ 완료 (즉시, {est_duration*1000:.0f}ms)")
+                self.log("info", f"MoveJ 완료 (즉시, {est_duration * 1000:.0f}ms)")
                 return
 
             # 이후 step 루프
@@ -312,15 +257,14 @@ class MotionNode(BaseNode):
                 next_t = t_start + (time.time() - t_start) + TRAJ_DT
                 result = otg.update(inp, out)
                 elapsed = time.time() - t_start
-                progress = min(elapsed / est_duration,
-                               1.0) if est_duration > 0 else 1.0
+                progress = min(elapsed / est_duration, 1.0) if est_duration > 0 else 1.0
 
                 self._publish_cmd(list(out.new_position))
                 self._publish_traj_state("running", progress)
 
                 if result == Result.Finished:
                     self._publish_traj_state("done", 1.0)
-                    self.log("info", f"MoveJ 완료 ({elapsed*1000:.0f}ms)")
+                    self.log("info", f"MoveJ 완료 ({elapsed * 1000:.0f}ms)")
                     return
 
                 if result == Result.Error:
@@ -359,9 +303,9 @@ class MotionNode(BaseNode):
             start_pose = self._motion.get_tcp_pose(angles)
             start_pos = list(start_pose.position)
             target_list = list(target_pos)
-            distance = float(np.linalg.norm(
-                np.array(target_list) - np.array(start_pos)
-            ))
+            distance = float(
+                np.linalg.norm(np.array(target_list) - np.array(start_pos))
+            )
 
             if distance < 1e-4:
                 return {"success": True, "message": "이미 목표 위치", "data": {}}
@@ -375,7 +319,7 @@ class MotionNode(BaseNode):
             self.log(
                 "info",
                 f"MoveL 시작 | {[f'{v:.3f}' for v in start_pos]} → "
-                f"{[f'{v:.3f}' for v in target_list]} | dist={distance*100:.1f}cm",
+                f"{[f'{v:.3f}' for v in target_list]} | dist={distance * 100:.1f}cm",
             )
             return {"success": True, "message": "ok", "data": {}}
 
@@ -385,9 +329,9 @@ class MotionNode(BaseNode):
 
     def _run_move_l(
         self,
-        start_pos:    list[float],
-        end_pos:      list[float],
-        distance:     float,
+        start_pos: list[float],
+        end_pos: list[float],
+        distance: float,
         start_angles: list[float],
     ) -> None:
         ok = self._set_arm_profile(velocity=0, acceleration=0)
@@ -395,7 +339,7 @@ class MotionNode(BaseNode):
             logger.warning("MoveL: profile 비활성화 실패 — 계속 진행")
 
         start = np.array(start_pos, dtype=float)
-        end = np.array(end_pos,   dtype=float)
+        end = np.array(end_pos, dtype=float)
 
         # 1D Ruckig (path parameter = 실제 이동 거리, 단위 m)
         otg = Ruckig(1, TRAJ_DT)
@@ -419,8 +363,7 @@ class MotionNode(BaseNode):
 
         self.log(
             "info",
-            f"MoveL Ruckig | dist={distance*100:.1f}cm "
-            f"| 예상 {est_duration:.1f}s",
+            f"MoveL Ruckig | dist={distance * 100:.1f}cm | 예상 {est_duration:.1f}s",
         )
 
         def _step(s_meters: float) -> bool:
@@ -430,7 +373,7 @@ class MotionNode(BaseNode):
             result = self._motion.move_tcp(waypoint, current_angles)
             if result is None:
                 logger.warning(
-                    f"MoveL IK 실패 | s={s_meters*100:.1f}cm "
+                    f"MoveL IK 실패 | s={s_meters * 100:.1f}cm "
                     f"| waypoint={[f'{v:.4f}' for v in waypoint]}"
                 )
                 return False
@@ -444,8 +387,7 @@ class MotionNode(BaseNode):
                 self._publish_traj_state("failed", 0.0)
                 return
             elapsed = time.time() - t_start
-            progress = min(elapsed / est_duration,
-                           1.0) if est_duration > 0 else 1.0
+            progress = min(elapsed / est_duration, 1.0) if est_duration > 0 else 1.0
             self._publish_traj_state("running", progress)
 
             if first_result == Result.Finished:
@@ -470,13 +412,12 @@ class MotionNode(BaseNode):
                     return
 
                 elapsed = time.time() - t_start
-                progress = min(elapsed / est_duration,
-                               1.0) if est_duration > 0 else 1.0
+                progress = min(elapsed / est_duration, 1.0) if est_duration > 0 else 1.0
                 self._publish_traj_state("running", progress)
 
                 if result == Result.Finished:
                     self._publish_traj_state("done", 1.0)
-                    self.log("info", f"MoveL 완료 ({elapsed*1000:.0f}ms)")
+                    self.log("info", f"MoveL 완료 ({elapsed * 1000:.0f}ms)")
                     return
 
                 if result == Result.Error:

@@ -4,7 +4,6 @@ import { ServiceKey } from "@/constants/topics";
 import type {
   TCPPose,
   MoveTCPRequest,
-  OrbitRotateRequest,
   MoveJRequest,
   MoveLRequest,
   TrajectoryState,
@@ -13,7 +12,6 @@ import { useMotionStore } from "@/store/motionStore";
 
 interface UseMotionReturn {
   tcpPose: TCPPose | null;
-  orbitActive: boolean;
   trajectoryState: TrajectoryState | null;
   loading: boolean;
   error: string | null;
@@ -22,11 +20,6 @@ interface UseMotionReturn {
   getTCP: () => Promise<TCPPose | null>;
   moveTCP: (req: MoveTCPRequest) => Promise<boolean>;
 
-  // Orbit
-  orbitSet: () => Promise<boolean>;
-  orbitRotate: (req: OrbitRotateRequest) => Promise<boolean>;
-  orbitClear: () => Promise<void>;
-
   // MoveJ / MoveL
   moveJ: (req: MoveJRequest) => Promise<boolean>;
   moveL: (req: MoveLRequest) => Promise<boolean>;
@@ -34,8 +27,7 @@ interface UseMotionReturn {
 }
 
 export function useMotion(): UseMotionReturn {
-  const { tcpPose, orbitActive, trajectoryState, setTcpPose, setOrbitActive } =
-    useMotionStore();
+  const { tcpPose, trajectoryState, setTcpPose } = useMotionStore();
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,47 +50,13 @@ export function useMotion(): UseMotionReturn {
     setLoading(true);
     const res = await bridge.callService(
       ServiceKey.MOTION_MOVE_TCP,
-      req as unknown as Record<string, unknown>
+      req as unknown as Record<string, unknown>,
     );
     setLoading(false);
     if (!res.success) setError(res.message);
     else setError(null);
     return res.success;
   }, []);
-
-  // ─── Orbit ─────────────────────────────────────────────
-
-  const orbitSet = useCallback(async () => {
-    setLoading(true);
-    const res = await bridge.callService(ServiceKey.MOTION_ORBIT_SET, {});
-    setLoading(false);
-
-    if (res.success) {
-      setOrbitActive(true);
-      setTcpPose(res.data as unknown as TCPPose);
-      setError(null);
-    } else {
-      setError(res.message);
-    }
-
-    return res.success;
-  }, [setOrbitActive, setTcpPose]);
-
-  const orbitRotate = useCallback(async (req: OrbitRotateRequest) => {
-    const res = await bridge.callService(
-      ServiceKey.MOTION_ORBIT_ROTATE,
-      req as unknown as Record<string, unknown>
-    );
-    if (!res.success) setError(res.message);
-    else setError(null);
-    return res.success;
-  }, []);
-
-  const orbitClear = useCallback(async () => {
-    await bridge.callService(ServiceKey.MOTION_ORBIT_CLEAR, {});
-    setOrbitActive(false);
-    setError(null);
-  }, [setOrbitActive]);
 
   // ─── MoveJ ─────────────────────────────────────────────
 
@@ -108,7 +66,7 @@ export function useMotion(): UseMotionReturn {
 
     const res = await bridge.callService(
       ServiceKey.MOTION_MOVE_J,
-      req as unknown as Record<string, unknown>
+      req as unknown as Record<string, unknown>,
     );
 
     setLoading(false);
@@ -125,7 +83,7 @@ export function useMotion(): UseMotionReturn {
 
     const res = await bridge.callService(
       ServiceKey.MOTION_MOVE_L,
-      req as unknown as Record<string, unknown>
+      req as unknown as Record<string, unknown>,
     );
 
     setLoading(false);
@@ -143,15 +101,11 @@ export function useMotion(): UseMotionReturn {
 
   return {
     tcpPose,
-    orbitActive,
     trajectoryState,
     loading,
     error,
     getTCP,
     moveTCP,
-    orbitSet,
-    orbitRotate,
-    orbitClear,
     moveJ,
     moveL,
     stopMotion,
