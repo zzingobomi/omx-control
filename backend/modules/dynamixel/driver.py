@@ -19,21 +19,21 @@ logger = logging.getLogger(__name__)
 # ─── Control Table (XL430 / XL330 공통) ───────────────────────
 ADDR_OPERATING_MODE = 11
 ADDR_TORQUE_ENABLE = 64
-ADDR_GOAL_POSITION = 116
-ADDR_PRESENT_POSITION = 132
-ADDR_PRESENT_VELOCITY = 128
-ADDR_PRESENT_LOAD = 126
-ADDR_PROFILE_VELOCITY = 112
+ADDR_GOAL_CURRENT = 102
 ADDR_PROFILE_ACCELERATION = 108
-ADDR_MIN_POSITION_LIMIT = 52
-ADDR_MAX_POSITION_LIMIT = 48
+ADDR_PROFILE_VELOCITY = 112
+ADDR_GOAL_POSITION = 116
+ADDR_PRESENT_LOAD = 126
+ADDR_PRESENT_VELOCITY = 128
+ADDR_PRESENT_POSITION = 132
 
-LEN_GOAL_POSITION = 4
-LEN_PRESENT_POSITION = 4
-LEN_PRESENT_VELOCITY = 4
-LEN_PRESENT_LOAD = 2
-LEN_PROFILE_VELOCITY = 4
+LEN_GOAL_CURRENT = 2
 LEN_PROFILE_ACCEL = 4
+LEN_PROFILE_VELOCITY = 4
+LEN_GOAL_POSITION = 4
+LEN_PRESENT_LOAD = 2
+LEN_PRESENT_VELOCITY = 4
+LEN_PRESENT_POSITION = 4
 
 OPERATING_MODE_POSITION = 3
 PROTOCOL_VERSION = 2.0
@@ -160,6 +160,16 @@ class DynamixelDriver:
             )
         return val if result == COMM_SUCCESS else 0
 
+    # ─── Gripper ────────────────────────────────────────────
+
+    def set_goal_current(self, motor_id: int, current: int) -> None:
+        """Goal Current 설정.
+        Current-based Position Control 모드(5)에서만 유효.
+        current 단위: raw value (XL330 기준 1 ≈ 1mA)
+        권장 파지력: 100~300 (물체 크기/무게에 따라 조정)
+        """
+        self._write2(motor_id, ADDR_GOAL_CURRENT, current)
+
     # ─── 프로파일 설정 ────────────────────────────────────────
 
     def set_profile_velocity(self, motor_id: int, velocity: int) -> None:
@@ -225,6 +235,15 @@ class DynamixelDriver:
         if result != COMM_SUCCESS:
             logger.warning(
                 f"write1 실패 id={motor_id}: {self.packet_handler.getTxRxResult(result)}")
+
+    def _write2(self, motor_id: int, addr: int, value: int) -> None:
+        with self._lock:
+            result, _ = self.packet_handler.write2ByteTxRx(
+                self.port_handler, motor_id, addr, value
+            )
+        if result != COMM_SUCCESS:
+            logger.warning(
+                f"write2 실패 id={motor_id}: {self.packet_handler.getTxRxResult(result)}")
 
     def _write4(self, motor_id: int, addr: int, value: int) -> None:
         with self._lock:

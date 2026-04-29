@@ -10,12 +10,14 @@ class MoveTCPStep:
     position_key: str | None = None
     offset: Position3 = (0.0, 0.0, 0.0)
     label: str = ""
-    type: Literal["move_tcp"] = field(default="move_tcp", init=False, repr=False)
+    type: Literal["move_tcp"] = field(
+        default="move_tcp", init=False, repr=False)
 
 
 @dataclass
 class GripperStep:
     action: Literal["open", "close"] = "open"
+    current: int = 200   # mA, 파지력 조정용
     label: str = ""
     type: Literal["gripper"] = field(default="gripper", init=False, repr=False)
 

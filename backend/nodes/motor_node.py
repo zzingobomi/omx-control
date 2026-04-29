@@ -6,6 +6,7 @@ import threading
 from core.base_node import BaseNode
 from core.topic_map import Topic, Service
 from core.units import RAW_MAX, raw_to_deg
+from core.common import GRIPPER_ID
 from modules.dynamixel.driver import DynamixelDriver
 from modules.dynamixel.motor_config import load_motor_config
 
@@ -21,6 +22,11 @@ _PROFILE_ACC_UNIT = 214.577  # rev/min² per count
 _ACCEL_RATIO = 0.25
 _DECEL_RATIO = 0.25
 _CRUISE_RATIO = 1.0 - _ACCEL_RATIO - _DECEL_RATIO  # 0.50
+
+# Gripper 관련 상수
+GRIPPER_OPEN_RAW = 1800
+GRIPPER_CLOSE_RAW = 2600   # current 제한이 있으므로 여유있게
+GRIPPER_CURRENT_DEFAULT = 200    # mA, 기본 파지력
 
 
 class MotorNode(BaseNode):
@@ -41,6 +47,7 @@ class MotorNode(BaseNode):
         self.create_service(Service.MOTOR_SET_PROFILE_ALL,
                             self._srv_set_profile_all)
         self.create_service(Service.MOTOR_GET_CONFIG, self._srv_get_config)
+        self.create_service(Service.MOTOR_GRIPPER, self._srv_gripper)
 
     # ─── Lifecycle ───────────────────────────────────────────
 
@@ -197,3 +204,20 @@ class MotorNode(BaseNode):
             "message": "ok",
             "data": {"motors": configs, "torque_enabled": self.torque_enabled},
         }
+
+    def _srv_gripper(self, req: dict) -> dict:
+        data = req.get("data", {})
+        action = data.get("action", "open")
+        current = int(data.get("current", GRIPPER_CURRENT_DEFAULT))
+
+        if action not in ("open", "close"):
+            return {"success": False, "message": f"action은 open/close만 허용: {action}", "data": {}}
+
+        raw = GRIPPER_OPEN_RAW if action == "open" else GRIPPER_CLOSE_RAW
+
+        if action == "close":
+            self.driver.set_goal_current(GRIPPER_ID, current)
+
+        self.driver.set_goal_position(GRIPPER_ID, raw)
+
+        return {"success": True, "message": "ok", "data": {}}

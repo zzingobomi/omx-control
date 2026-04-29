@@ -25,6 +25,7 @@ class Service:
     MOTOR_SET_PROFILE_ALL = "omx/motor/srv/set_profile_all"
     MOTOR_REBOOT = "omx/motor/srv/reboot"
     MOTOR_GET_CONFIG = "omx/motor/srv/get_config"
+    MOTOR_GRIPPER = "omx/motor/srv/gripper"
 
     # ─── Motion ───────────────────────────────────────────────
     MOTION_GET_TCP = "omx/motion/srv/get_tcp"

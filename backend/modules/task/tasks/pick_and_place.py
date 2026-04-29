@@ -23,7 +23,9 @@ def create_pick_and_place_task(
             f"{place_position[1]:.3f}, {place_position[2]:.3f})에 내려놓기"
         ),
         steps=[
+            # GripperStep(action="close", current=150, label="close_gripper"),  # 약하게
             GripperStep(action="open", label="open_gripper"),
+            # GripperStep(action="close", current=300, label="close_gripper"),  # 강하게
             # HomeStep(label="go_home"),
             # DetectStep(
             #     output_key="object_pos",
