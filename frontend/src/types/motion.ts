@@ -26,6 +26,17 @@ export interface MoveLRequest {
   position: Vec3; // [x, y, z] meter
 }
 
+// ─── MoveC ───────────────────────────────────────────────────
+export interface MoveCRequest {
+  via: Vec3;
+  end: Vec3;
+}
+
+// ─── MoveP ───────────────────────────────────────────────────
+export interface MovePRequest {
+  waypoints: Vec3[];
+}
+
 export type TrajectoryStatus =
   | "running"
   | "done"

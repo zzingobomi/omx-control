@@ -13,6 +13,9 @@ export const Topic = {
   // System
   SYSTEM_HEARTBEAT: "omx/system/heartbeat",
   SYSTEM_LOG: "omx/system/log",
+
+  // Task
+  TASK_STATE: "omx/task/state",
 } as const;
 
 export const ServiceKey = {
@@ -27,6 +30,8 @@ export const ServiceKey = {
   MOTION_MOVE_TCP: "omx/motion/srv/move_tcp",
   MOTION_MOVE_J: "omx/motion/srv/move_j",
   MOTION_MOVE_L: "omx/motion/srv/move_l",
+  MOTION_MOVE_C: "omx/motion/srv/move_c",
+  MOTION_MOVE_P: "omx/motion/srv/move_p",
   MOTION_STOP: "omx/motion/srv/stop",
 
   // Calibration

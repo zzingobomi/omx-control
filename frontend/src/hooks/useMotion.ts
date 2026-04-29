@@ -6,6 +6,8 @@ import type {
   MoveTCPRequest,
   MoveJRequest,
   MoveLRequest,
+  MoveCRequest,
+  MovePRequest,
   TrajectoryState,
 } from "@/types/motion";
 import { useMotionStore } from "@/store/motionStore";
@@ -20,9 +22,11 @@ interface UseMotionReturn {
   getTCP: () => Promise<TCPPose | null>;
   moveTCP: (req: MoveTCPRequest) => Promise<boolean>;
 
-  // MoveJ / MoveL
+  // MoveJ / MoveL / MoveC / MoveP
   moveJ: (req: MoveJRequest) => Promise<boolean>;
   moveL: (req: MoveLRequest) => Promise<boolean>;
+  moveC: (req: MoveCRequest) => Promise<boolean>;
+  moveP: (req: MovePRequest) => Promise<boolean>;
   stopMotion: () => Promise<void>;
 }
 
@@ -50,7 +54,7 @@ export function useMotion(): UseMotionReturn {
     setLoading(true);
     const res = await bridge.callService(
       ServiceKey.MOTION_MOVE_TCP,
-      req as unknown as Record<string, unknown>,
+      req as unknown as Record<string, unknown>
     );
     setLoading(false);
     if (!res.success) setError(res.message);
@@ -66,7 +70,7 @@ export function useMotion(): UseMotionReturn {
 
     const res = await bridge.callService(
       ServiceKey.MOTION_MOVE_J,
-      req as unknown as Record<string, unknown>,
+      req as unknown as Record<string, unknown>
     );
 
     setLoading(false);
@@ -83,7 +87,41 @@ export function useMotion(): UseMotionReturn {
 
     const res = await bridge.callService(
       ServiceKey.MOTION_MOVE_L,
-      req as unknown as Record<string, unknown>,
+      req as unknown as Record<string, unknown>
+    );
+
+    setLoading(false);
+    if (!res.success) setError(res.message);
+
+    return res.success;
+  }, []);
+
+  // ─── MoveC ─────────────────────────────────────────────
+
+  const moveC = useCallback(async (req: MoveCRequest): Promise<boolean> => {
+    setLoading(true);
+    setError(null);
+
+    const res = await bridge.callService(
+      ServiceKey.MOTION_MOVE_C,
+      req as unknown as Record<string, unknown>
+    );
+
+    setLoading(false);
+    if (!res.success) setError(res.message);
+
+    return res.success;
+  }, []);
+
+  // ─── MoveP ─────────────────────────────────────────────
+
+  const moveP = useCallback(async (req: MovePRequest): Promise<boolean> => {
+    setLoading(true);
+    setError(null);
+
+    const res = await bridge.callService(
+      ServiceKey.MOTION_MOVE_P,
+      req as unknown as Record<string, unknown>
     );
 
     setLoading(false);
@@ -108,6 +146,8 @@ export function useMotion(): UseMotionReturn {
     moveTCP,
     moveJ,
     moveL,
+    moveC,
+    moveP,
     stopMotion,
   };
 }

@@ -2,10 +2,10 @@ import logging
 import threading
 from typing import TYPE_CHECKING
 
-
+from core.types import TrajStatus
 from core.topic_map import Topic
 from modules.calibration.loader import CalibrationData
-from nodes.motion_node import TrajStatus
+
 from .step_types import (
     DetectStep,
     GripperStep,

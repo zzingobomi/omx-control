@@ -128,6 +128,7 @@ _ALWAYS_SUBSCRIBE = [
     Topic.SYSTEM_HEARTBEAT,
     Topic.SYSTEM_LOG,
     Topic.MOTION_STATE_TRAJ,
+    Topic.TASK_STATE,
 ]
 
 _zenoh_subs: list[zenoh.Subscriber] = []
