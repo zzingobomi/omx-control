@@ -9,13 +9,14 @@ from ruckig import Ruckig, InputParameter, OutputParameter, Result
 from core.base_node import BaseNode
 from core.topic_map import Service, Topic
 from core.joint_state_cache import JointStateCache
+from core.common import GRIPPER_ID
 from core.units import deg_to_rad, rad_to_raw
 from modules.dynamixel.motor_config import MotorConfig, load_motor_config
 from modules.kinematics.motion_modes import MotionModes
 
 logger = logging.getLogger(__name__)
 
-GRIPPER_ID = 6
+
 TRAJ_FREQ = 50  # Hz — MoveJ / MoveL 공통 루프 주기
 TRAJ_DT = 1.0 / TRAJ_FREQ  # 20ms
 
@@ -47,6 +48,7 @@ class TrajStatus(str, Enum):
     FAILED = "failed"
 
 
+# TODO: 리팩토링 필요..
 class MotionNode(BaseNode):
     def __init__(self):
         super().__init__("motion_node")
@@ -69,6 +71,8 @@ class MotionNode(BaseNode):
         self.create_service(Service.MOTION_MOVE_TCP, self._srv_move_tcp)
         self.create_service(Service.MOTION_MOVE_J, self._srv_move_j)
         self.create_service(Service.MOTION_MOVE_L, self._srv_move_l)
+        # self.create_service(Service.MOTION_MOVE_C, self._srv_move_c)
+        # self.create_service(Service.MOTION_MOVE_P, self._srv_move_p)
         self.create_service(Service.MOTION_STOP, self._srv_stop)
 
     # ─── 단위 변환 ────────────────────────────────────────────
@@ -440,3 +444,33 @@ class MotionNode(BaseNode):
             )
             if not ok:
                 logger.warning("MoveL: profile 복원 실패")
+
+    # # ─── MoveC ─────────────────────────────────────────────────
+
+    # def _srv_move_c(self, req: dict) -> dict:
+    #     pass
+
+    # def _run_move_c(
+    #     self,
+    #     center:     np.ndarray,
+    #     radius:     float,
+    #     u_vec:      np.ndarray,
+    #     v_vec:      np.ndarray,
+    #     theta_end:  float,
+    #     arc_length: float,
+    #     start_angles: list[float],
+    # ) -> None:
+    #     pass
+
+    # # ─── MoveP ─────────────────────────────────────────────────
+
+    # def _srv_move_p(self, req: dict) -> dict:
+    #     pass
+
+    # def _run_move_p(
+    #     self,
+    #     cs:           CubicSpline,
+    #     total_dist:   float,
+    #     start_angles: list[float],
+    # ) -> None:
+    #     pass

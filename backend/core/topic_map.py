@@ -14,6 +14,9 @@ class Topic:
     # ─── Motion ───────────────────────────────────────────────
     MOTION_STATE_TRAJ = "omx/motion/state/trajectory"
 
+    # ─── Task ────────────────────────────────────────────────
+    TASK_STATE = "omx/task/state"
+
 
 class Service:
     # ─── Motor ───────────────────────────────────────────────
@@ -28,6 +31,8 @@ class Service:
     MOTION_MOVE_TCP = "omx/motion/srv/move_tcp"
     MOTION_MOVE_J = "omx/motion/srv/move_j"
     MOTION_MOVE_L = "omx/motion/srv/move_l"
+    MOTION_MOVE_C = "omx/motion/srv/move_c"
+    MOTION_MOVE_P = "omx/motion/srv/move_p"
     MOTION_STOP = "omx/motion/srv/stop"
 
     # ─── Calibration ─────────────────────────────────────────
@@ -39,3 +44,10 @@ class Service:
 
     # ─── System ──────────────────────────────────────────────
     SYSTEM_NODE_STATUS = "omx/system/srv/node_status"
+
+    # ─── Task ────────────────────────────────────────────────
+    TASK_RUN = "omx/task/srv/run"
+    TASK_STOP = "omx/task/srv/stop"
+    TASK_PAUSE = "omx/task/srv/pause"
+    TASK_RESUME = "omx/task/srv/resume"
+    TASK_STATUS = "omx/task/srv/status"

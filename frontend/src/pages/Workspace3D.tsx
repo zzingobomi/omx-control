@@ -17,7 +17,7 @@ interface SceneOptions {
 }
 
 export function Workspace3D() {
-  const { results, status, loading, error, refetch } = useCalibrationResults();
+  const { results, loading, error, refetch } = useCalibrationResults();
 
   const joints = useRobotStore((s) => s.joints);
   const jointAngles = useMemo<number[]>(() => {
@@ -44,7 +44,7 @@ export function Workspace3D() {
   const [tcpMatrix, setTcpMatrix] = useState<THREE.Matrix4 | null>(null);
   const handleTCPMatrix = useCallback(
     (m: THREE.Matrix4 | null) => setTcpMatrix(m),
-    []
+    [],
   );
 
   const toggle = useCallback((key: keyof SceneOptions) => {
@@ -54,7 +54,7 @@ export function Workspace3D() {
   // ── 링크별 visibility ──────────────────────────────────────────────────
   const [linkNames, setLinkNames] = useState<string[]>([]);
   const [linkVisibility, setLinkVisibility] = useState<Record<string, boolean>>(
-    {}
+    {},
   );
   const [linksExpanded, setLinksExpanded] = useState(false);
 
@@ -71,7 +71,7 @@ export function Workspace3D() {
     linkNames.length > 0 && linkNames.every((n) => linkVisibility[n] !== false);
   const toggleAllLinks = useCallback(() => {
     setLinkVisibility(
-      Object.fromEntries(linkNames.map((n) => [n, !allLinksVisible]))
+      Object.fromEntries(linkNames.map((n) => [n, !allLinksVisible])),
     );
   }, [linkNames, allLinksVisible]);
   // ───────────────────────────────────────────────────────────────────────
@@ -150,8 +150,8 @@ export function Workspace3D() {
           <p className="text-[10px] uppercase tracking-widest text-zinc-500 mb-2">
             Calibration
           </p>
-          <StatusBadge ok={status?.intrinsic ?? false} label="Intrinsic" />
-          <StatusBadge ok={status?.hand_eye ?? false} label="Hand-Eye" />
+          <StatusBadge ok={!!results?.intrinsic} label="Intrinsic" />
+          <StatusBadge ok={!!results?.hand_eye} label="Hand-Eye" />
           {error && <p className="text-[10px] text-red-400 mt-1">⚠ {error}</p>}
         </div>
 

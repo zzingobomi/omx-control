@@ -8,8 +8,6 @@ from modules.dynamixel.motor_config import MotorConfig
 if TYPE_CHECKING:
     from core.base_node import BaseNode
 
-GRIPPER_ID = 6
-
 
 class JointStateCache:
     _instance: "JointStateCache | None" = None

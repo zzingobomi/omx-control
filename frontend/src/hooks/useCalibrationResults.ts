@@ -27,26 +27,25 @@ export interface CalibrationStatus {
 
 export function useCalibrationResults() {
   const [results, setResults] = useState<CalibrationResults | null>(null);
-  const [status, setStatus] = useState<CalibrationStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchResults = useCallback(async () => {
     setLoading(true);
     setError(null);
+
     try {
-      const [resData, resStatus] = await Promise.all([
-        fetch(`${BASE_URL}/calibration/results`),
-        fetch(`${BASE_URL}/calibration/status`),
-      ]);
-      if (!resData.ok) throw new Error(`HTTP ${resData.status}`);
-      const [data, stat] = await Promise.all([
-        resData.json(),
-        resStatus.json(),
-      ]);
+      const res = await fetch(`${BASE_URL}/calibration/results`);
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.error || `HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
       setResults(data);
-      setStatus(stat);
     } catch (e) {
+      setResults(null);
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
       setLoading(false);
@@ -57,5 +56,5 @@ export function useCalibrationResults() {
     fetchResults();
   }, [fetchResults]);
 
-  return { results, status, loading, error, refetch: fetchResults };
+  return { results, loading, error, refetch: fetchResults };
 }

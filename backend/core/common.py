@@ -1,0 +1,1 @@
+GRIPPER_ID = 6

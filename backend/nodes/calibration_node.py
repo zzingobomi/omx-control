@@ -5,6 +5,7 @@ from pathlib import Path
 from core.base_node import BaseNode
 from core.topic_map import Service
 from core.joint_state_cache import JointStateCache
+from core.common import GRIPPER_ID
 from modules.dynamixel.motor_config import load_motor_config
 from modules.camera.capture import CameraCapture
 from modules.camera.stream import frame_to_base64
@@ -16,7 +17,6 @@ from modules.kinematics.solver import PybulletSolver
 logger = logging.getLogger(__name__)
 
 SAVE_DIR = Path(__file__).parents[2] / "robot" / "calibration"
-GRIPPER_ID = 6
 
 
 class CalibrationNode(BaseNode):
@@ -44,14 +44,11 @@ class CalibrationNode(BaseNode):
 
         # 내부 캘리브레이션
         self.create_service(Service.CALIB_CAPTURE, self._srv_capture)
-        self.create_service(Service.CALIB_INTRINSIC_START,
-                            self._srv_intrinsic_start)
-        self.create_service(Service.CALIB_INTRINSIC_SAVE,
-                            self._srv_intrinsic_save)
+        self.create_service(Service.CALIB_INTRINSIC_START, self._srv_intrinsic_start)
+        self.create_service(Service.CALIB_INTRINSIC_SAVE, self._srv_intrinsic_save)
 
         # Hand-Eye 캘리브레이션
-        self.create_service(Service.CALIB_HANDEYE_START,
-                            self._srv_handeye_start)
+        self.create_service(Service.CALIB_HANDEYE_START, self._srv_handeye_start)
         self.create_service(Service.CALIB_HANDEYE_SAVE, self._srv_handeye_save)
 
     # ─── 이미지 캡처 ─────────────────────────────────────────

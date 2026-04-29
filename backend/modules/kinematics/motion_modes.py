@@ -1,4 +1,3 @@
-import math
 from dataclasses import dataclass
 
 from .solver import PybulletSolver, Position3, Quaternion
