@@ -8,6 +8,8 @@ import type { CameraStatus } from "@/types/camera";
 import { useCameraStore } from "@/store/cameraStore";
 import { useMotionStore } from "@/store/motionStore";
 import type { TrajectoryState } from "@/types/motion";
+import { useTaskStore } from "@/store/taskStore";
+import type { TaskState } from "@/types/task";
 
 export function useBridge() {
   const setBridgeConnected = useSystemStore((s) => s.setBridgeConnected);
@@ -18,6 +20,8 @@ export function useBridge() {
   const setTorque = useRobotStore((s) => s.setTorque);
   const setStatus = useCameraStore((s) => s.setStatus);
   const setTrajectoryState = useMotionStore((s) => s.setTrajectoryState);
+  const setTaskState = useTaskStore((s) => s.setTaskState);
+  const setLoading = useTaskStore((s) => s.setLoading);
 
   useEffect(() => {
     // Bridge 연결
@@ -78,12 +82,20 @@ export function useBridge() {
       setTrajectoryState(data as unknown as TrajectoryState);
     });
 
+    // Task 상태 구독
+    const unsubTask = bridge.subscribe(Topic.TASK_STATE, (data) => {
+      const state = data as unknown as TaskState;
+      setTaskState(state);
+      if (state.status !== "idle") setLoading(false);
+    });
+
     return () => {
       unsubJoint();
       unsubHeartbeat();
       unsubLog();
       unsubCameraStatus();
       unsubTraj();
+      unsubTask();
       bridge.disconnect();
     };
   }, [
@@ -95,5 +107,7 @@ export function useBridge() {
     setStatus,
     setTorque,
     setTrajectoryState,
+    setTaskState,
+    setLoading,
   ]);
 }

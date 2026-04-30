@@ -8,6 +8,7 @@ import {
   Box,
   Home,
   Power,
+  Hand,
 } from "lucide-react";
 import { ConnectionStatus } from "@/components/common/ConnectionStatus";
 import { cn } from "@/lib/utils";
@@ -18,6 +19,7 @@ const navItems = [
   { to: "/motion", label: "Motion", icon: Cpu },
   { to: "/calibration", label: "Calibration", icon: Camera },
   { to: "/workspace", label: "Workspace3D", icon: Box },
+  { to: "/pick-and-place", label: "Pick & Place", icon: Hand },
   { to: "/ai", label: "AI", icon: Bot },
   { to: "/settings", label: "Settings", icon: Settings },
 ];

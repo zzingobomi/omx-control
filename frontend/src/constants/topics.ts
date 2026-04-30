@@ -43,4 +43,11 @@ export const ServiceKey = {
 
   // System
   SYSTEM_NODE_STATUS: "omx/system/srv/node_status",
+
+  // Task
+  TASK_RUN: "omx/task/srv/run",
+  TASK_STOP: "omx/task/srv/stop",
+  TASK_PAUSE: "omx/task/srv/pause",
+  TASK_RESUME: "omx/task/srv/resume",
+  TASK_STATUS: "omx/task/srv/status",
 } as const;

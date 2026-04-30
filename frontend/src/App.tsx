@@ -6,6 +6,7 @@ import { Motion } from "@/pages/Motion";
 import { Settings } from "@/pages/Settings";
 import { Calibration } from "@/pages/Calibration";
 import { Workspace3D } from "@/pages/Workspace3D";
+import { PickAndPlace } from "@/pages/PickAndPlace";
 
 function AppContent() {
   useBridge();
@@ -19,6 +20,7 @@ function AppContent() {
           <Route path="/motion" element={<Motion />} />
           <Route path="/calibration" element={<Calibration />} />
           <Route path="/workspace" element={<Workspace3D />} />
+          <Route path="/pick-and-place" element={<PickAndPlace />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
       </main>
