@@ -52,3 +52,6 @@ class Service:
     TASK_PAUSE = "omx/task/srv/pause"
     TASK_RESUME = "omx/task/srv/resume"
     TASK_STATUS = "omx/task/srv/status"
+
+    # ─── Detector ─────────────────────────────────────────────
+    DETECT_SERVICE = "omx/detector/srv/detect"
