@@ -1,10 +1,11 @@
 import { CameraFeed } from "@/components/camera/CameraFeed";
 import { CoordInput } from "@/components/common/CoordInput";
 import { StepProgress } from "@/components/common/StepProgress";
+import { DetectionOverlay } from "@/components/detector/DetectionOverlay";
 import { useTask } from "@/hooks/useTask";
 import type { Vec3 } from "@/types/motion";
 import type { TaskStatus } from "@/types/task";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const DEFAULT_PLACE: Vec3 = [0.15, 0.0, 0.05];
 
@@ -30,6 +31,21 @@ export function PickAndPlace() {
   const { taskState, loading, run, stop, pause, resume, syncStatus } =
     useTask();
   const [placePos, setPlacePos] = useState<Vec3>(DEFAULT_PLACE);
+
+  // 카메라 컨테이너 실제 렌더 크기 측정
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [displaySize, setDisplaySize] = useState({ width: 0, height: 0 });
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      const { width, height } = entries[0].contentRect;
+      setDisplaySize({ width, height });
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const isActive =
     taskState.status === "running" || taskState.status === "paused";
@@ -60,11 +76,28 @@ export function PickAndPlace() {
       <div className="flex gap-4 flex-1 min-h-0">
         {/* ── 왼쪽: 카메라 + 진행 상태 ── */}
         <div className="flex flex-col gap-4 flex-1 min-w-0">
-          <div className="relative rounded-xl overflow-hidden bg-zinc-900 border border-zinc-700/50 aspect-video">
+          <div
+            ref={containerRef}
+            className="relative rounded-xl overflow-hidden bg-zinc-900 border border-zinc-700/50 aspect-video"
+          >
             <CameraFeed />
+
+            {/* Detection bbox 오버레이 */}
+            {displaySize.width > 0 && (
+              <DetectionOverlay
+                frameWidth={1280}
+                frameHeight={720}
+                displayWidth={displaySize.width}
+                displayHeight={displaySize.height}
+              />
+            )}
+
+            {/* Task 상태 오버레이 */}
             <div className="absolute top-2 left-2 flex items-center gap-2 bg-zinc-900/80 backdrop-blur-sm px-2.5 py-1 rounded-md">
               <span
-                className={`font-mono text-xs font-bold ${STATUS_COLOR[taskState.status]}`}
+                className={`font-mono text-xs font-bold ${
+                  STATUS_COLOR[taskState.status]
+                }`}
               >
                 {STATUS_LABEL[taskState.status]}
               </span>

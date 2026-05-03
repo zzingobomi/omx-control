@@ -17,6 +17,9 @@ class Topic:
     # ─── Task ────────────────────────────────────────────────
     TASK_STATE = "omx/task/state"
 
+    # ─── Detector ─────────────────────────────────────────────
+    DETECTOR_STATE = "omx/detector/state"
+
 
 class Service:
     # ─── Motor ───────────────────────────────────────────────

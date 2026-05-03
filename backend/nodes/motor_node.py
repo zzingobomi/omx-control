@@ -24,8 +24,8 @@ _DECEL_RATIO = 0.25
 _CRUISE_RATIO = 1.0 - _ACCEL_RATIO - _DECEL_RATIO  # 0.50
 
 # Gripper 관련 상수
-GRIPPER_OPEN_RAW = 1800
-GRIPPER_CLOSE_RAW = 2600   # current 제한이 있으므로 여유있게
+GRIPPER_OPEN_RAW = 2600
+GRIPPER_CLOSE_RAW = 1800   # current 제한이 있으므로 여유있게
 GRIPPER_CURRENT_DEFAULT = 200    # mA, 기본 파지력
 
 
@@ -215,9 +215,7 @@ class MotorNode(BaseNode):
 
         raw = GRIPPER_OPEN_RAW if action == "open" else GRIPPER_CLOSE_RAW
 
-        if action == "close":
-            self.driver.set_goal_current(GRIPPER_ID, current)
-
+        self.driver.set_goal_current(GRIPPER_ID, current)
         self.driver.set_goal_position(GRIPPER_ID, raw)
 
         return {"success": True, "message": "ok", "data": {}}

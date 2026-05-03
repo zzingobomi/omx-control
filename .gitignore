@@ -40,3 +40,7 @@ desktop.ini
 .env
 .env.local
 .env.*.local
+
+# ─── Weights ───────────────────────────────────────────────────
+*.pt
+*.pth

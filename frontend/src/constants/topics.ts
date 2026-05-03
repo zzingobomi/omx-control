@@ -16,6 +16,9 @@ export const Topic = {
 
   // Task
   TASK_STATE: "omx/task/state",
+
+  // Detector
+  DETECTOR_STATE: "omx/detector/state",
 } as const;
 
 export const ServiceKey = {

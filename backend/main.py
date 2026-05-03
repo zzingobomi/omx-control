@@ -9,7 +9,9 @@ from nodes.motor_node import MotorNode
 from nodes.camera_node import CameraNode
 from nodes.motion_node import MotionNode
 from nodes.calibration_node import CalibrationNode
+from nodes.task_node import TaskNode
 from nodes.detector_node import DetectorNode
+from nodes.gamepad_node import GamepadNode
 from bridge.zenoh_bridge import app, setup_zenoh_subscribers
 
 logging.basicConfig(
@@ -33,10 +35,13 @@ def main():
     camera_node = CameraNode()
     motion_node = MotionNode()
     calib_node = CalibrationNode(camera=camera_node.camera)
+    task_node = TaskNode(camera=camera_node.camera)
     detector_node = DetectorNode(camera=camera_node.camera)
+    gamepad_node = GamepadNode()
 
     # ─── 노드 시작 (별도 스레드) ──────────────────────────────
-    nodes = [motor_node, camera_node, motion_node, calib_node, detector_node]
+    nodes = [motor_node, camera_node, motion_node,
+             calib_node, task_node, detector_node, gamepad_node]
     for node in nodes:
         node.start()
         logger.info(f"노드 시작됨: {node.node_name}")

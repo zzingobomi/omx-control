@@ -18,6 +18,7 @@ dependencies = [
     "ruckig>=0.17.3",
     "scipy>=1.17.1",
     "ultralytics>=8.4.45",
+    "pygame>=2.6.1",
 ]
 
 [dependency-groups]

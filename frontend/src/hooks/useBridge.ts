@@ -10,6 +10,7 @@ import { useMotionStore } from "@/store/motionStore";
 import type { TrajectoryState } from "@/types/motion";
 import { useTaskStore } from "@/store/taskStore";
 import type { TaskState } from "@/types/task";
+import { useDetectorStore, type Detection } from "@/store/detectorStore";
 
 export function useBridge() {
   const setBridgeConnected = useSystemStore((s) => s.setBridgeConnected);
@@ -22,6 +23,7 @@ export function useBridge() {
   const setTrajectoryState = useMotionStore((s) => s.setTrajectoryState);
   const setTaskState = useTaskStore((s) => s.setTaskState);
   const setLoading = useTaskStore((s) => s.setLoading);
+  const setDetections = useDetectorStore((s) => s.setDetections);
 
   useEffect(() => {
     // Bridge 연결
@@ -65,7 +67,7 @@ export function useBridge() {
           node: string;
           level: string;
           message: string;
-        },
+        }
       );
     });
 
@@ -74,7 +76,7 @@ export function useBridge() {
       Topic.CAMERA_STATE_STATUS,
       (data) => {
         setStatus(data as unknown as CameraStatus);
-      },
+      }
     );
 
     // Trajectory 상태 구독
@@ -89,6 +91,15 @@ export function useBridge() {
       if (state.status !== "idle") setLoading(false);
     });
 
+    // Detector 상태 구독
+    const unsubDetector = bridge.subscribe(Topic.DETECTOR_STATE, (data) => {
+      const { detections, timestamp } = data as {
+        detections: Detection[];
+        timestamp: number;
+      };
+      setDetections(detections ?? [], timestamp ?? 0);
+    });
+
     return () => {
       unsubJoint();
       unsubHeartbeat();
@@ -96,6 +107,7 @@ export function useBridge() {
       unsubCameraStatus();
       unsubTraj();
       unsubTask();
+      unsubDetector();
       bridge.disconnect();
     };
   }, [
@@ -109,5 +121,6 @@ export function useBridge() {
     setTrajectoryState,
     setTaskState,
     setLoading,
+    setDetections,
   ]);
 }
